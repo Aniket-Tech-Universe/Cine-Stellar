@@ -104,6 +104,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     })),
   logout: async () => {
     try {
+      // Dynamic import to avoid loading Firebase on non-auth static pages
+      const { auth } = await import("./firebase");
+      const { signOut } = await import("firebase/auth");
+      await signOut(auth);
       await fetch("/api/auth/logout", { method: "POST" });
       set({ user: null, watchlist: [], favorites: [] });
       window.location.reload();

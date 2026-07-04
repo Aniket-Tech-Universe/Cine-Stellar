@@ -5,6 +5,13 @@ import React, { useState } from "react";
 import { Dialog, DialogContent } from "../ui/dialog";
 import Button from "../ui/button";
 import { useAuthModalStore, useAuthStore } from "@/lib/store";
+import { auth, googleProvider } from "@/lib/firebase";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  updateProfile,
+} from "firebase/auth";
 
 export default function AuthModal() {
   const { isOpen, view, closeAuthModal, setAuthView } = useAuthModalStore();
@@ -21,24 +28,41 @@ export default function AuthModal() {
     setIsLoading(true);
     setError("");
 
-    const endpoint = view === "login" ? "/api/auth/login" : "/api/auth/signup";
-    const body = view === "login" ? { email, password } : { email, password, name };
-
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "An error occurred");
+      let userCredential;
+      if (view === "login") {
+        // Firebase Login Email/Password
+        userCredential = await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        // Firebase Signup Email/Password
+        userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        if (name && userCredential.user) {
+          await updateProfile(userCredential.user, { displayName: name });
+        }
       }
 
+      const firebaseUser = userCredential.user;
+
+      // Sync user data to local database to get user session cookie
+      const syncRes = await fetch("/api/auth/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || name || firebaseUser.email?.split("@")[0],
+        }),
+      });
+
+      if (!syncRes.ok) {
+        const syncData = await syncRes.json();
+        throw new Error(syncData.error || "Session synchronization failed.");
+      }
+
+      const syncData = await syncRes.json();
+
       // Successful Auth
-      setUser(data.user);
+      setUser(syncData.user);
       closeAuthModal();
       
       // Clear inputs
@@ -49,7 +73,17 @@ export default function AuthModal() {
       // Reload page to reflect user details
       window.location.reload();
     } catch (err: any) {
-      setError(err.message || "Failed to submit request.");
+      console.error("Credentials Auth failed:", err);
+      // Clean up user-friendly Firebase error messages
+      let msg = err.message || "Failed to submit request.";
+      if (msg.includes("auth/invalid-credential")) {
+        msg = "Invalid email or password.";
+      } else if (msg.includes("auth/email-already-in-use")) {
+        msg = "This email is already registered.";
+      } else if (msg.includes("auth/weak-password")) {
+        msg = "Password should be at least 6 characters.";
+      }
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -57,35 +91,42 @@ export default function AuthModal() {
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
-    // Standard mock authentication using Google OAuth styling as per plan.txt
+    setError("");
     try {
-      const emailMock = "google_user@gmail.com";
-      const nameMock = "Google User";
-      
-      // Call signup API which creates/logs in the user
-      const response = await fetch("/api/auth/signup", {
+      // Firebase Google Popup Auth
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      const firebaseUser = userCredential.user;
+
+      // Sync Google User with relational Database
+      const syncRes = await fetch("/api/auth/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailMock, password: "mock_google_oauth_pass_2026", name: nameMock }),
+        body: JSON.stringify({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0],
+        }),
       });
-      
-      let data = await response.json();
-      
-      // If user exists, log in
-      if (!response.ok && response.status === 409) {
-        const loginResponse = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: emailMock, password: "mock_google_oauth_pass_2026" }),
-        });
-        data = await loginResponse.json();
+
+      if (!syncRes.ok) {
+        const syncData = await syncRes.json();
+        throw new Error(syncData.error || "Session synchronization failed.");
       }
 
-      setUser(data.user);
+      const syncData = await syncRes.json();
+
+      setUser(syncData.user);
       closeAuthModal();
       window.location.reload();
-    } catch (err) {
-      setError("Google Sign-In simulation failed.");
+    } catch (err: any) {
+      console.error("Google Sign-In failed:", err);
+      let msg = "Google Sign-In failed.";
+      if (err.code === "auth/popup-closed-by-user") {
+        msg = "Sign-in popup closed before completion.";
+      } else if (err.message) {
+        msg = err.message;
+      }
+      setError(msg);
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,6 @@
-// API Route handler for user favorite media tracking.
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, setDoc, deleteDoc, query, orderBy } from "firebase/firestore";
 import { getCurrentUser } from "@/lib/auth-utils";
 
 export async function GET() {
@@ -10,10 +10,13 @@ export async function GET() {
   }
 
   try {
-    const favorites = await prisma.favorite.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const q = query(
+      collection(db, "users", user.id, "favorites"),
+      orderBy("createdAt", "desc")
+    );
+    const querySnapshot = await getDocs(q);
+    const favorites = querySnapshot.docs.map((docSnap) => docSnap.data());
+
     return NextResponse.json({ favorites });
   } catch (error) {
     console.error("Favorites fetch error:", error);
@@ -34,24 +37,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const favoriteItem = await prisma.favorite.upsert({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-      update: {},
-      create: {
-        userId: user.id,
-        mediaId: String(mediaId),
-        mediaType,
-        title,
-        posterPath,
-        backdropPath,
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "favorites", docId);
+
+    const favoriteItem = {
+      userId: user.id,
+      mediaId: String(mediaId),
+      mediaType,
+      title,
+      posterPath: posterPath || "",
+      backdropPath: backdropPath || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    await setDoc(docRef, favoriteItem);
 
     return NextResponse.json({ message: "Added to favorites", item: favoriteItem });
   } catch (error) {
@@ -75,15 +74,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Missing mediaId or mediaType" }, { status: 400 });
     }
 
-    await prisma.favorite.delete({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "favorites", docId);
+    await deleteDoc(docRef);
 
     return NextResponse.json({ message: "Removed from favorites" });
   } catch (error) {

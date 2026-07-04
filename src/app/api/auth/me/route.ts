@@ -1,6 +1,7 @@
 // API Route handler for retrieving/updating current user context.
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getCurrentUser, hashPassword } from "@/lib/auth-utils";
 
 // Get current user details
@@ -32,19 +33,12 @@ export async function PUT(request: NextRequest) {
       updateData.password = await hashPassword(newPassword);
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        avatar: true,
-        preferredLanguage: true,
-        theme: true,
-      },
-    });
+    const userRef = doc(db, "users", user.id);
+    await setDoc(userRef, updateData, { merge: true });
+
+    // Fetch the updated user profile from Firestore to return
+    const userSnap = await getDoc(userRef);
+    const updatedUser = userSnap.data();
 
     return NextResponse.json({
       message: "Profile updated successfully",

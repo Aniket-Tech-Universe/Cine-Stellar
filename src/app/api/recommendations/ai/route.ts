@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import { getCurrentUser } from "@/lib/auth-utils";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { tmdbService } from "@/lib/services/tmdb";
@@ -12,12 +13,14 @@ export async function GET(request: NextRequest) {
   let watchHistoryList: string[] = [];
   if (user) {
     try {
-      const history = await prisma.watchHistory.findMany({
-        where: { userId: user.id },
-        orderBy: { lastWatched: "desc" },
-        take: 5,
-      });
-      watchHistoryList = history.map((h) => `${h.title} (${h.mediaType})`);
+      const q = query(
+        collection(db, "users", user.id, "history"),
+        orderBy("lastWatched", "desc"),
+        limit(5)
+      );
+      const querySnapshot = await getDocs(q);
+      const history = querySnapshot.docs.map((docSnap) => docSnap.data());
+      watchHistoryList = history.map((h: any) => `${h.title} (${h.mediaType})`);
     } catch (e) {
       console.warn("Could not query watch history:", e);
     }

@@ -1,6 +1,6 @@
-// API Route handler for movie/show rating submissions.
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getCurrentUser } from "@/lib/auth-utils";
 
 export async function GET(request: NextRequest) {
@@ -18,17 +18,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const rating = await prisma.rating.findUnique({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "ratings", docId);
+    const docSnap = await getDoc(docRef);
 
-    return NextResponse.json({ rating: rating ? rating.rating : null });
+    if (docSnap.exists()) {
+      return NextResponse.json({ rating: docSnap.data().rating });
+    }
+
+    return NextResponse.json({ rating: null });
   } catch (error) {
     console.error("Fetch rating error:", error);
     return NextResponse.json({ error: "Failed to fetch rating" }, { status: 500 });
@@ -48,24 +46,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const ratingItem = await prisma.rating.upsert({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-      update: {
-        rating,
-      },
-      create: {
-        userId: user.id,
-        mediaId: String(mediaId),
-        mediaType,
-        rating,
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "ratings", docId);
+
+    const ratingItem = {
+      userId: user.id,
+      mediaId: String(mediaId),
+      mediaType,
+      rating: Number(rating),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await setDoc(docRef, ratingItem);
 
     return NextResponse.json({ message: "Rating submitted successfully", rating: ratingItem });
   } catch (error) {

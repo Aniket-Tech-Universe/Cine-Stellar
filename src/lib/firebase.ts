@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
 // Define fallback dummy configurations to prevent Next.js build compilation
 // and prerendering crashes when environment variables are not loaded.
@@ -15,10 +16,11 @@ const firebaseConfig = {
 // Initialize Firebase client for client-side and server-side hydration
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
 // Apply custom scopes if needed (like email)
 googleProvider.addScope("email");
 googleProvider.addScope("profile");
 
-export { auth, googleProvider };
+export { auth, googleProvider, db };

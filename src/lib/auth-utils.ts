@@ -2,7 +2,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
-import prisma from "./db";
+import { db } from "./firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 const JWT_SECRET = process.env.JWT_SECRET || "cine_stellar_jwt_secret_key_ultra_premium_2026";
 const COOKIE_NAME = "cinestellar_session";
@@ -57,7 +58,7 @@ export async function clearSessionCookie() {
   cookieStore.delete(COOKIE_NAME);
 }
 
-// Get current user from request cookies
+// Get current user from request cookies loading from Firestore
 export async function getCurrentUser() {
   try {
     const cookieStore = await cookies();
@@ -67,23 +68,17 @@ export async function getCurrentUser() {
     const decoded = verifyToken(token);
     if (!decoded) return null;
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        avatar: true,
-        preferredLanguage: true,
-        theme: true,
-        createdAt: true,
-      },
-    });
+    // Fetch user document from Firestore
+    const userRef = doc(db, "users", decoded.userId);
+    const userSnap = await getDoc(userRef);
 
-    return user;
+    if (!userSnap.exists()) {
+      return null;
+    }
+
+    return userSnap.data();
   } catch (error) {
-    console.error("Error fetching current user:", error);
+    console.error("Error fetching current user from Firestore:", error);
     return null;
   }
 }

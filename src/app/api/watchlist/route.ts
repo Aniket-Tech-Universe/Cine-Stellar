@@ -1,6 +1,6 @@
-// API Route handler for user watchlist tracking.
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, setDoc, deleteDoc, query, orderBy } from "firebase/firestore";
 import { getCurrentUser } from "@/lib/auth-utils";
 
 export async function GET() {
@@ -10,10 +10,13 @@ export async function GET() {
   }
 
   try {
-    const watchlist = await prisma.watchlist.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const q = query(
+      collection(db, "users", user.id, "watchlist"),
+      orderBy("createdAt", "desc")
+    );
+    const querySnapshot = await getDocs(q);
+    const watchlist = querySnapshot.docs.map((docSnap) => docSnap.data());
+
     return NextResponse.json({ watchlist });
   } catch (error) {
     console.error("Watchlist fetch error:", error);
@@ -34,24 +37,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const watchlistItem = await prisma.watchlist.upsert({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-      update: {},
-      create: {
-        userId: user.id,
-        mediaId: String(mediaId),
-        mediaType,
-        title,
-        posterPath,
-        backdropPath,
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "watchlist", docId);
+
+    const watchlistItem = {
+      userId: user.id,
+      mediaId: String(mediaId),
+      mediaType,
+      title,
+      posterPath: posterPath || "",
+      backdropPath: backdropPath || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    await setDoc(docRef, watchlistItem);
 
     return NextResponse.json({ message: "Added to watchlist", item: watchlistItem });
   } catch (error) {
@@ -75,15 +74,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Missing mediaId or mediaType" }, { status: 400 });
     }
 
-    await prisma.watchlist.delete({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "watchlist", docId);
+    await deleteDoc(docRef);
 
     return NextResponse.json({ message: "Removed from watchlist" });
   } catch (error) {

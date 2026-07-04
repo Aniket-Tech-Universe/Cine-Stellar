@@ -1,6 +1,6 @@
-// API Route handler for user watch history and video playback progress tracking.
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, setDoc, query, orderBy } from "firebase/firestore";
 import { getCurrentUser } from "@/lib/auth-utils";
 
 export async function GET() {
@@ -10,10 +10,13 @@ export async function GET() {
   }
 
   try {
-    const watchHistory = await prisma.watchHistory.findMany({
-      where: { userId: user.id },
-      orderBy: { lastWatched: "desc" },
-    });
+    const q = query(
+      collection(db, "users", user.id, "history"),
+      orderBy("lastWatched", "desc")
+    );
+    const querySnapshot = await getDocs(q);
+    const watchHistory = querySnapshot.docs.map((docSnap) => docSnap.data());
+
     return NextResponse.json({ watchHistory });
   } catch (error) {
     console.error("Watch history fetch error:", error);
@@ -43,33 +46,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const historyItem = await prisma.watchHistory.upsert({
-      where: {
-        userId_mediaId_mediaType: {
-          userId: user.id,
-          mediaId: String(mediaId),
-          mediaType,
-        },
-      },
-      update: {
-        progress,
-        duration,
-        season: season || null,
-        episode: episode || null,
-        lastWatched: new Date(),
-      },
-      create: {
-        userId: user.id,
-        mediaId: String(mediaId),
-        mediaType,
-        title,
-        backdropPath,
-        progress,
-        duration,
-        season: season || null,
-        episode: episode || null,
-      },
-    });
+    const docId = `${mediaType}_${mediaId}`;
+    const docRef = doc(db, "users", user.id, "history", docId);
+
+    const historyItem = {
+      userId: user.id,
+      mediaId: String(mediaId),
+      mediaType,
+      title,
+      backdropPath: backdropPath || "",
+      progress: Number(progress),
+      duration: Number(duration),
+      season: season ? Number(season) : null,
+      episode: episode ? Number(episode) : null,
+      lastWatched: new Date().toISOString(),
+    };
+
+    await setDoc(docRef, historyItem);
 
     return NextResponse.json({ message: "Playback progress saved", item: historyItem });
   } catch (error) {

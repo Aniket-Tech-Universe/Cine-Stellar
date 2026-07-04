@@ -72,7 +72,7 @@ export default async function HomePage() {
       <HeroBanner featured={featured} />
 
       {/* Media Slider lanes */}
-      <div className="relative z-20 space-y-2.5 -mt-16 sm:-mt-24 md:-mt-32">
+      <div className="relative z-20 space-y-2.5 -mt-10 sm:-mt-16 md:-mt-20">
         {/* Dynamic client-specific personalized rows: Watchlist, History */}
         <ClientRows />
 

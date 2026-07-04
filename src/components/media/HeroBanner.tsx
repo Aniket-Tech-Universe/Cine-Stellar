@@ -78,7 +78,7 @@ export default function HeroBanner({ featured }: HeroBannerProps) {
       </div>
 
       {/* Info Content overlay */}
-      <div className="relative z-20 max-w-3xl px-6 sm:px-12 md:px-16 pb-12 sm:pb-16 text-left space-y-4">
+      <div className="relative z-20 max-w-3xl px-6 sm:px-12 md:px-16 pb-20 sm:pb-28 md:pb-36 text-left space-y-4">
         <h1 className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-none text-glow uppercase">
           {featured.title || featured.name}
         </h1>

@@ -19,6 +19,19 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 
+// Safe debug logging to see if Vercel is loading the key correctly without printing the full secret
+if (typeof window !== "undefined") {
+  const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  console.log("--- Firebase Configuration Debug ---");
+  console.log("API Key Exists:", !!key);
+  console.log("API Key Length:", key.length);
+  console.log("API Key Start:", key.substring(0, 10));
+  console.log("API Key End:", key.substring(key.length - 5));
+  console.log("Auth Domain:", firebaseConfig.authDomain);
+  console.log("Project ID:", firebaseConfig.projectId);
+  console.log("-------------------------------------");
+}
+
 // Apply custom scopes if needed (like email)
 googleProvider.addScope("email");
 googleProvider.addScope("profile");

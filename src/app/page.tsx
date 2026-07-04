@@ -77,7 +77,7 @@ export default async function HomePage() {
         <ClientRows />
 
         {/* Live TMDB media categories */}
-        <MovieRow title="Trending Now" items={trending} />
+        <MovieRow title="Trending Now" items={trending} isTrending={true} />
         <MovieRow title="Popular Movies" items={popularMovies} />
         <MovieRow title="Popular TV Shows" items={popularShows} />
         <MovieRow title="Upcoming Releases" items={upcoming} />

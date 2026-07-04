@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Play, Plus, Check, Star } from "lucide-react";
+import { Play, Plus, Check, Star, Flame } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { getImagePath } from "@/lib/services/tmdb";
@@ -15,6 +15,9 @@ interface MovieCardProps {
   backdropPath: string | null;
   mediaType: "movie" | "tv";
   voteAverage: number;
+  isTrending?: boolean;
+  index?: number;
+  reason?: string;
 }
 
 export default function MovieCard({
@@ -24,6 +27,9 @@ export default function MovieCard({
   backdropPath,
   mediaType,
   voteAverage,
+  isTrending,
+  index,
+  reason,
 }: MovieCardProps) {
   const router = useRouter();
   const { openDetailModal } = useDetailModalStore();
@@ -100,6 +106,14 @@ export default function MovieCard({
       whileHover={{ scale: 1.03 }}
       transition={{ duration: 0.25 }}
     >
+      {/* Trending Rank Badge */}
+      {isTrending && index !== undefined && (
+        <div className="absolute top-2.5 left-2.5 z-30 px-2.5 py-1 bg-rose-600/90 border border-rose-500/30 rounded-xl text-[9px] sm:text-[10px] font-black text-white uppercase tracking-wider shadow-lg flex items-center space-x-1 backdrop-blur-md">
+          <Flame className="h-3 w-3 fill-current text-white animate-pulse" />
+          <span>#{index + 1} Trending</span>
+        </div>
+      )}
+
       {/* Poster Image */}
       <img
         src={getImagePath(posterPath, "w500")}
@@ -120,6 +134,12 @@ export default function MovieCard({
             <h4 className="text-white text-xs sm:text-sm font-extrabold tracking-tight line-clamp-1 mb-1">
               {title}
             </h4>
+            
+            {reason && (
+              <p className="text-[9px] sm:text-[10px] text-purple-400 font-bold italic line-clamp-2 leading-tight mb-2.5">
+                🔮 {reason}
+              </p>
+            )}
             
             <div className="flex items-center space-x-2 text-[10px] sm:text-xs font-semibold text-zinc-300 mb-2">
               <span className="text-rose-500 font-bold capitalize">{mediaType}</span>

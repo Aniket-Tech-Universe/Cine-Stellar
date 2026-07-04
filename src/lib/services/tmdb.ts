@@ -83,6 +83,7 @@ export const tmdbService = {
     }
   },
 
+
   // Get popular items
   getPopular: async (mediaType: "movie" | "tv" = "movie", page = 1): Promise<MediaItem[]> => {
     try {
@@ -286,6 +287,39 @@ export const tmdbService = {
       return mediaType === "movie" 
         ? defaultGenres.slice(0, 10) 
         : defaultGenres.slice(5, 15);
+    }
+  },
+
+  // Get watch providers streaming list
+  getWatchProviders: async (
+    mediaId: string,
+    mediaType: "movie" | "tv"
+  ): Promise<any[]> => {
+    try {
+      const data = await fetchFromTMDB<{ results: Record<string, any> }>(
+        `/${mediaType}/${mediaId}/watch/providers`
+      );
+      // Grab US watch providers list or fallback to the first available country code
+      const usProviders = data.results?.["US"] || Object.values(data.results || {})[0];
+      return usProviders?.flatrate || usProviders?.rent || usProviders?.buy || [];
+    } catch (error) {
+      console.warn("Failed to fetch watch providers:", error);
+      return [];
+    }
+  },
+
+  // Get details for a specific season of a TV show
+  getSeasonDetails: async (
+    tvId: string,
+    seasonNumber: number
+  ): Promise<{ episodes: any[] }> => {
+    try {
+      return await fetchFromTMDB<{ episodes: any[] }>(
+        `/tv/${tvId}/season/${seasonNumber}`
+      );
+    } catch (error) {
+      console.warn("Failed to fetch season details:", error);
+      return { episodes: [] };
     }
   },
 };

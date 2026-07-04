@@ -31,6 +31,7 @@ export default function DetailsModal() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
+  const [providers, setProviders] = useState<any[]>([]);
 
   const [loadingWatchlist, setLoadingWatchlist] = useState(false);
   const [loadingFavorite, setLoadingFavorite] = useState(false);
@@ -48,12 +49,13 @@ export default function DetailsModal() {
       setLoading(true);
       setPlayTrailer(false);
       try {
-        const [detRes, castRes, vidRes, revRes, recRes] = await Promise.all([
+        const [detRes, castRes, vidRes, revRes, recRes, provRes] = await Promise.all([
           tmdbService.getDetails(mediaId!, mediaType!),
           tmdbService.getCredits(mediaId!, mediaType!),
           tmdbService.getVideos(mediaId!, mediaType!),
           tmdbService.getReviews(mediaId!, mediaType!),
           tmdbService.getRecommendations(mediaId!, mediaType!),
+          tmdbService.getWatchProviders(mediaId!, mediaType!),
         ]);
 
         setDetails(detRes);
@@ -61,6 +63,7 @@ export default function DetailsModal() {
         setVideos(vidRes);
         setReviews(revRes);
         setRecommendations(recRes);
+        setProviders(provRes);
       } catch (err) {
         console.error("Failed to load details modal data:", err);
       } finally {
@@ -315,6 +318,33 @@ export default function DetailsModal() {
                     <p className="text-zinc-300 text-sm md:text-base leading-relaxed">
                       {details.overview}
                     </p>
+
+                    {/* Watch Providers badge line */}
+                    {providers && providers.length > 0 && (
+                      <div className="space-y-2 pt-4 border-t border-zinc-900">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500">
+                          Where to Stream
+                        </span>
+                        <div className="flex items-center space-x-3 flex-wrap gap-y-2">
+                          {providers.slice(0, 6).map((provider) => (
+                            <div
+                              key={provider.provider_id}
+                              className="relative flex items-center space-x-2 bg-zinc-900/60 border border-zinc-800 px-3 py-1.5 rounded-xl shadow"
+                              title={provider.provider_name}
+                            >
+                              <img
+                                src={getImagePath(provider.logo_path, "w500")}
+                                alt={provider.provider_name}
+                                className="h-5 w-5 rounded-md object-cover"
+                              />
+                              <span className="text-xs text-zinc-300 font-bold">
+                                {provider.provider_name}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Sidebar stats details */}
@@ -404,22 +434,22 @@ export default function DetailsModal() {
                     <h3 className="text-lg md:text-xl font-bold text-white tracking-tight">
                       More Like This
                     </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                      {recommendations.slice(0, 5).map((rec) => (
+                    <div className="flex space-x-4 overflow-x-auto no-scrollbar py-2">
+                      {recommendations.slice(0, 12).map((rec) => (
                         <div
                           key={rec.id}
                           onClick={() => {
                             useDetailModalStore.getState().openDetailModal(String(rec.id), rec.media_type || mediaType);
                           }}
-                          className="group relative rounded-xl overflow-hidden cursor-pointer border border-zinc-900 aspect-[2/3] bg-zinc-900/50"
+                          className="flex-shrink-0 w-28 sm:w-36 rounded-xl overflow-hidden cursor-pointer border border-zinc-900 aspect-[2/3] bg-zinc-900/50 group relative shadow-md"
                         >
                           <img
                             src={getImagePath(rec.poster_path, "w500")}
                             alt={rec.title || rec.name}
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                            className="w-full h-full object-cover transition-transform group-hover:scale-103"
                           />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all p-3">
-                            <p className="text-xs font-bold text-white text-center">
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all p-2 text-center">
+                            <p className="text-[10px] sm:text-xs font-bold text-white leading-tight line-clamp-2">
                               {rec.title || rec.name}
                             </p>
                           </div>

@@ -16,6 +16,7 @@ export default function ClientRows() {
 
   const [history, setHistory] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
+  const [aiRecommendations, setAiRecommendations] = useState<any[]>([]);
 
   // Map to standard MediaItem structure
   const watchlistItems = watchlist.map((w: any) => ({
@@ -87,6 +88,13 @@ export default function ClientRows() {
             );
             setRecommendations(filteredRecs);
           }
+        }
+
+        // Fetch Gemini AI recommendations
+        const aiRes = await fetch("/api/recommendations/ai");
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          setAiRecommendations(aiData.recommendations || []);
         }
       } catch (err) {
         console.error("Failed to load client row assets:", err);
@@ -161,6 +169,11 @@ export default function ClientRows() {
       {/* 2. My List Row */}
       {watchlistItems && watchlistItems.length > 0 && (
         <MovieRow title="My List" items={watchlistItems} />
+      )}
+
+      {/* 2.5 Gemini AI Recommendations Row */}
+      {aiRecommendations && aiRecommendations.length > 0 && (
+        <MovieRow title="🔮 Gemini AI Recommendations" items={aiRecommendations} />
       )}
 
       {/* 3. Recommended Row */}

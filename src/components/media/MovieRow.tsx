@@ -9,9 +9,10 @@ import { MediaItem } from "@/lib/services/mockData";
 interface MovieRowProps {
   title: string;
   items: MediaItem[];
+  isTrending?: boolean;
 }
 
-export default function MovieRow({ title, items }: MovieRowProps) {
+export default function MovieRow({ title, items, isTrending }: MovieRowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
 
@@ -61,7 +62,7 @@ export default function MovieRow({ title, items }: MovieRowProps) {
           onScroll={handleScroll}
           className="flex space-x-4 overflow-x-auto no-scrollbar scroll-smooth py-3 px-4 md:px-10"
         >
-          {items.map((item) => (
+          {items.map((item, idx) => (
             <MovieCard
               key={item.id}
               id={String(item.id)}
@@ -70,6 +71,9 @@ export default function MovieRow({ title, items }: MovieRowProps) {
               backdropPath={item.backdrop_path}
               mediaType={item.media_type}
               voteAverage={item.vote_average}
+              isTrending={isTrending}
+              index={idx}
+              reason={(item as any).reason}
             />
           ))}
         </div>

@@ -129,7 +129,48 @@ Each object in the array MUST contain:
 
     return NextResponse.json({ recommendations });
   } catch (error) {
-    console.error("AI Recommendations error:", error);
-    return NextResponse.json({ error: "Failed to generate AI recommendations" }, { status: 500 });
+    console.warn("AI recommendations model generation failed, falling back to TMDB recommendations:", error);
+    try {
+      // Find user's last watched media or fall back to a default (like Inception, movie ID 27205)
+      let lastWatchedId = "27205";
+      let lastWatchedType: "movie" | "tv" = "movie";
+      let lastWatchedTitle = "Inception";
+
+      if (user) {
+        try {
+          const querySnapshot = await db
+            .collection("users")
+            .doc(user.id)
+            .collection("history")
+            .orderBy("lastWatched", "desc")
+            .limit(1)
+            .get();
+          if (!querySnapshot.empty) {
+            const docSnap = querySnapshot.docs[0].data();
+            lastWatchedId = docSnap.mediaId;
+            lastWatchedType = docSnap.mediaType as "movie" | "tv";
+            lastWatchedTitle = docSnap.title;
+          }
+        } catch (dbErr) {
+          console.warn("Failed to read user history for fallback:", dbErr);
+        }
+      }
+
+      const rawRecs = await tmdbService.getRecommendations(lastWatchedId, lastWatchedType);
+      const recommendations = rawRecs.slice(0, 5).map((rec: any) => ({
+        id: String(rec.id),
+        title: rec.title || rec.name,
+        poster_path: rec.poster_path || "",
+        backdrop_path: rec.backdrop_path || "",
+        media_type: rec.media_type || lastWatchedType,
+        vote_average: rec.vote_average || 0,
+        reason: `Recommended based on your interest in ${lastWatchedTitle}.`,
+      }));
+
+      return NextResponse.json({ recommendations });
+    } catch (fallbackError) {
+      console.error("AI recommendations and TMDB fallback failed:", fallbackError);
+      return NextResponse.json({ error: "Failed to generate recommendations" }, { status: 500 });
+    }
   }
 }

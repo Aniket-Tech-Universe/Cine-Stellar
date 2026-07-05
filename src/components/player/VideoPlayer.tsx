@@ -64,11 +64,11 @@ export default function VideoPlayer({
   const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(false);
   const [currentEpisode, setCurrentEpisode] = useState(episode);
 
-  // VidKing Embed View Toggle
-  const [useVidKing, setUseVidKing] = useState(false);
+  // Server-choice state: "cinema" | "vidsrc_to" | "vidsrc_xyz" | "embed_su"
+  const [activeServer, setActiveServer] = useState<"cinema" | "vidsrc_to" | "vidsrc_xyz" | "embed_su">("cinema");
 
-  // Demo direct video source
-  const videoSrc = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+  // Demo direct video source (using stable Sintel MP4 stream)
+  const videoSrc = "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4";
 
   // Auto Hide Controls
   useEffect(() => {
@@ -302,29 +302,45 @@ export default function VideoPlayer({
               )}
             </div>
 
-            {/* Toggle Player type (Direct/VidKing Iframe) */}
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={() => {
-                setUseVidKing(!useVidKing);
-                setIsPlaying(false);
-              }}
-              className="border-zinc-700 bg-zinc-900/60"
-            >
-              {useVidKing ? "Use Cinema Stream" : "Use VidKing Server"}
-            </Button>
+            {/* Active Streaming Server Selector */}
+            <div className="relative">
+              <select
+                value={activeServer}
+                onChange={(e) => {
+                  setActiveServer(e.target.value as any);
+                  setIsPlaying(false);
+                }}
+                className="bg-zinc-950/90 text-zinc-300 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-rose-500 hover:text-white transition-colors"
+              >
+                <option value="cinema">Cinema Stream (Direct)</option>
+                <option value="vidsrc_to">Server 1 (VidSrc TO)</option>
+                <option value="vidsrc_xyz">Server 2 (VidSrc XYZ)</option>
+                <option value="embed_su">Server 3 (Embed SU)</option>
+              </select>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Main Stream Area */}
-      {useVidKing ? (
+      {activeServer !== "cinema" ? (
         // Iframe Stream
         <div className="w-full h-full">
           <iframe
-            src={`https://vidking.link/v/${mediaId}`}
-            title="VidKing Streaming Player"
+            src={
+              activeServer === "vidsrc_to"
+                ? mediaType === "movie"
+                  ? `https://vidsrc.to/embed/movie/${mediaId}`
+                  : `https://vidsrc.to/embed/tv/${mediaId}/${season}/${currentEpisode}`
+                : activeServer === "vidsrc_xyz"
+                ? mediaType === "movie"
+                  ? `https://vidsrc.xyz/embed/movie/${mediaId}`
+                  : `https://vidsrc.xyz/embed/tv/${mediaId}/${season}/${currentEpisode}`
+                : mediaType === "movie"
+                ? `https://embed.su/embed/movie/${mediaId}`
+                : `https://embed.su/embed/tv/${mediaId}/${season}/${currentEpisode}`
+            }
+            title="Premium Streaming Player"
             className="w-full h-full border-none"
             allowFullScreen
           />

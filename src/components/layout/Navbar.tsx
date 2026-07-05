@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Bell, LogOut, Shield, User as UserIcon, List, Menu, X } from "lucide-react";
+import { Search, Bell, LogOut, Shield, User as UserIcon, List, Menu, X, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthModalStore, useAuthStore } from "@/lib/store";
 import Button from "../ui/button";
@@ -14,6 +14,26 @@ const NAV_LINKS = [
   { href: "/discover?type=tv", label: "TV Shows" },
   { href: "/discover?type=movie", label: "Movies" },
   { href: "/discover", label: "Discover" },
+];
+
+const MOVIE_GENRES = [
+  { id: 28, name: "Action" },
+  { id: 12, name: "Adventure" },
+  { id: 35, name: "Comedy" },
+  { id: 18, name: "Drama" },
+  { id: 878, name: "Sci-Fi" },
+  { id: 27, name: "Horror" },
+  { id: 10749, name: "Romance" },
+  { id: 53, name: "Thriller" },
+];
+
+const TV_GENRES = [
+  { id: 10759, name: "Action & Adventure" },
+  { id: 16, name: "Animation" },
+  { id: 35, name: "Comedy" },
+  { id: 18, name: "Drama" },
+  { id: 10765, name: "Sci-Fi & Fantasy" },
+  { id: 9648, name: "Mystery" },
 ];
 
 export default function Navbar() {
@@ -27,6 +47,8 @@ export default function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const [isMobileCategoriesOpen, setIsMobileCategoriesOpen] = useState(false);
 
   // Sync user status
   useEffect(() => {
@@ -79,7 +101,7 @@ export default function Navbar() {
             CINE<span className="text-white">STELLAR</span>
           </Link>
           
-          <div className="hidden md:flex space-x-6">
+          <div className="hidden md:flex space-x-6 items-center">
             {NAV_LINKS.map((link) => {
               const isActive = pathname === link.href;
               return (
@@ -94,6 +116,71 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {/* Detailed Categories Dropdown */}
+            <div
+              className="relative"
+              onMouseEnter={() => setIsCategoriesOpen(true)}
+              onMouseLeave={() => setIsCategoriesOpen(false)}
+            >
+              <button
+                className={`text-sm font-semibold tracking-wide transition-colors hover:text-rose-500 cursor-pointer flex items-center space-x-1 focus:outline-none ${
+                  isCategoriesOpen ? "text-rose-500" : "text-zinc-300"
+                }`}
+              >
+                <span>Categories</span>
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isCategoriesOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              <AnimatePresence>
+                {isCategoriesOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute left-1/2 -translate-x-1/2 mt-3 w-[400px] rounded-xl glass-panel border border-zinc-800/80 shadow-2xl p-5 grid grid-cols-2 gap-5 z-50 text-sm text-zinc-300"
+                  >
+                    {/* Column 1: Movies */}
+                    <div>
+                      <h4 className="text-xs font-bold text-rose-500 tracking-wider uppercase border-b border-zinc-800/60 pb-1.5 mb-2.5">
+                        Movies
+                      </h4>
+                      <div className="flex flex-col space-y-2">
+                        {MOVIE_GENRES.map((genre) => (
+                          <Link
+                            key={genre.id}
+                            href={`/discover?type=movie&genre=${genre.id}`}
+                            onClick={() => setIsCategoriesOpen(false)}
+                            className="text-zinc-300 hover:text-white hover:translate-x-1 transition-all duration-200"
+                          >
+                            {genre.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Column 2: TV Shows */}
+                    <div>
+                      <h4 className="text-xs font-bold text-rose-500 tracking-wider uppercase border-b border-zinc-800/60 pb-1.5 mb-2.5">
+                        TV Shows
+                      </h4>
+                      <div className="flex flex-col space-y-2">
+                        {TV_GENRES.map((genre) => (
+                          <Link
+                            key={genre.id}
+                            href={`/discover?type=tv&genre=${genre.id}`}
+                            onClick={() => setIsCategoriesOpen(false)}
+                            className="text-zinc-300 hover:text-white hover:translate-x-1 transition-all duration-200"
+                          >
+                            {genre.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
@@ -238,6 +325,65 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+
+            {/* Mobile Categories Accordion */}
+            <div className="border-t border-zinc-900 pt-2 mt-2">
+              <button
+                onClick={() => setIsMobileCategoriesOpen(!isMobileCategoriesOpen)}
+                className="w-full flex items-center justify-between py-2 text-sm font-semibold text-zinc-300 hover:text-rose-500 focus:outline-none"
+              >
+                <span>Browse Categories</span>
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isMobileCategoriesOpen ? "rotate-180" : ""}`} />
+              </button>
+              
+              <AnimatePresence>
+                {isMobileCategoriesOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden pl-4 pr-2 py-1.5 space-y-4 grid grid-cols-2 text-xs border-l-2 border-rose-600/30 ml-1 mt-1"
+                  >
+                    <div>
+                      <h5 className="font-bold text-rose-500 mb-2 tracking-wider">MOVIES</h5>
+                      <div className="flex flex-col space-y-2">
+                        {MOVIE_GENRES.map((g) => (
+                          <Link
+                            key={g.id}
+                            href={`/discover?type=movie&genre=${g.id}`}
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              setIsMobileCategoriesOpen(false);
+                            }}
+                            className="text-zinc-400 hover:text-white"
+                          >
+                            {g.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-rose-500 mb-2 tracking-wider">TV SHOWS</h5>
+                      <div className="flex flex-col space-y-2">
+                        {TV_GENRES.map((g) => (
+                          <Link
+                            key={g.id}
+                            href={`/discover?type=tv&genre=${g.id}`}
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              setIsMobileCategoriesOpen(false);
+                            }}
+                            className="text-zinc-400 hover:text-white"
+                          >
+                            {g.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

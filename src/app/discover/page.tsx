@@ -12,11 +12,12 @@ import { MediaItem } from "@/lib/services/mockData";
 function DiscoverPageContent() {
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type") as "movie" | "tv" | null;
+  const genreParam = searchParams.get("genre");
 
   // Filter states
   const [mediaType, setMediaType] = useState<"movie" | "tv">(typeParam || "movie");
   const [genres, setGenres] = useState<{ id: number; name: string }[]>([]);
-  const [selectedGenre, setSelectedGenre] = useState<string>("");
+  const [selectedGenre, setSelectedGenre] = useState<string>(genreParam || "");
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedLanguage, setSelectedLanguage] = useState<string>("");
   const [sortBy, setSortBy] = useState<string>("popularity.desc");
@@ -28,14 +29,19 @@ function DiscoverPageContent() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Sync media type from query param if changed
+  // Sync media type and genre from query param if changed
   useEffect(() => {
     if (typeParam) {
       setMediaType(typeParam);
-      setPage(1);
-      setResults([]);
     }
-  }, [typeParam]);
+    if (genreParam) {
+      setSelectedGenre(genreParam);
+    } else {
+      setSelectedGenre("");
+    }
+    setPage(1);
+    setResults([]);
+  }, [typeParam, genreParam]);
 
   // Load genres
   useEffect(() => {

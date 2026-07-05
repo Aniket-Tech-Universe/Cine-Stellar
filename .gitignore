@@ -43,3 +43,7 @@ next-env.d.ts
 /src/generated/prisma
 *.db
 *.db-journal
+
+# Firebase Service Account Keys
+cine-stellar-*-adminsdk-*.json
+firebase-adminsdk.json

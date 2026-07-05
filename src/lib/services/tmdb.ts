@@ -13,10 +13,7 @@ import {
 } from "./mockData";
 
 const API_BASE_URL = "https://api.themoviedb.org/3";
-const TMDB_API_KEY =
-  process.env.NEXT_PUBLIC_TMDB_API_KEY ||
-  process.env.TMDB_API_KEY ||
-  "";
+const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
 const IMAGE_BASE_URL = process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE_URL || "https://image.tmdb.org/t/p";
 
 // Helpers to format image paths
@@ -28,6 +25,23 @@ export const getImagePath = (path: string | null, size: "original" | "w500" | "w
 
 // Generic fetch wrapper with retries and Next.js ISR cache configs
 async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string> = {}, revalidate = 3600): Promise<T> {
+  const isClient = typeof window !== "undefined";
+
+  if (isClient) {
+    const queryParams = new URLSearchParams({
+      path: endpoint,
+      ...params,
+    });
+    const proxyUrl = `/api/tmdb?${queryParams.toString()}`;
+    
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`Proxy TMDB request failed with status: ${response.status}`);
+    }
+    return (await response.json()) as T;
+  }
+
+  // Server-side direct request logic
   if (!TMDB_API_KEY || TMDB_API_KEY.includes("your_")) {
     throw new Error("TMDB API key is not configured.");
   }

@@ -444,7 +444,11 @@ export default function DetailsModal() {
                           className="flex-shrink-0 w-28 sm:w-36 rounded-xl overflow-hidden cursor-pointer border border-zinc-900 aspect-[2/3] bg-zinc-900/50 group relative shadow-md"
                         >
                           <img
-                            src={getImagePath(rec.poster_path, "w500")}
+                            src={
+                              rec.poster_path && rec.poster_path.startsWith("http")
+                                ? rec.poster_path
+                                : `/api/imdb/poster?id=${rec.id}&type=${rec.media_type || mediaType}&title=${encodeURIComponent(rec.title || rec.name || "")}&fallback=${rec.poster_path ? encodeURIComponent(rec.poster_path) : ""}`
+                            }
                             alt={rec.title || rec.name}
                             className="w-full h-full object-cover transition-transform group-hover:scale-103"
                           />

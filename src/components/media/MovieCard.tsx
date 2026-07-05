@@ -116,7 +116,11 @@ export default function MovieCard({
 
       {/* Poster Image */}
       <img
-        src={getImagePath(posterPath, "w500")}
+        src={
+          posterPath && posterPath.startsWith("http")
+            ? posterPath
+            : `/api/imdb/poster?id=${id}&type=${mediaType}&title=${encodeURIComponent(title)}&fallback=${posterPath ? encodeURIComponent(posterPath) : ""}`
+        }
         alt={title}
         loading="lazy"
         className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"

@@ -34,6 +34,11 @@ export type ServerId =
   | "nhdapi"
   | "vidking"
   | "vidsrc_xyz"
+  | "vidsrc_xyz_rpm"
+  | "vidsrc_xyz_seek"
+  | "vidsrc_xyz_player4me"
+  | "vidsrc_xyz_upn"
+  | "vidsrc_xyz_p2p"
   | "embed_su";
 
 export const STREAM_SERVERS = [
@@ -46,6 +51,11 @@ export const STREAM_SERVERS = [
   { id: "nhdapi", name: "Server 7 (nhdapi)", flag: "🇮🇳" },
   { id: "vidking", name: "Server 8 (VidKing)", flag: "🌐" },
   { id: "vidsrc_xyz", name: "Server 9 (VidSrc XYZ / PM)", flag: "🌐" },
+  { id: "vidsrc_xyz_rpm", name: "Server 9a (VidSrc XYZ - RPMShare)", flag: "🌐" },
+  { id: "vidsrc_xyz_seek", name: "Server 9b (VidSrc XYZ - SeekStreaming)", flag: "🌐" },
+  { id: "vidsrc_xyz_player4me", name: "Server 9c (VidSrc XYZ - Player4Me)", flag: "🌐" },
+  { id: "vidsrc_xyz_upn", name: "Server 9d (VidSrc XYZ - UpnShare)", flag: "🌐" },
+  { id: "vidsrc_xyz_p2p", name: "Server 9e (VidSrc XYZ - StreamP2P)", flag: "🌐" },
   { id: "embed_su", name: "Server 10 (Embed SU / SuperEmbed)", flag: "🌐" },
 ];
 
@@ -64,8 +74,8 @@ export const resolveServerUrl = (
         : `https://vidsrc.to/embed/tv/${mediaId}/${season}/${episode}`;
     case "gdmirror":
       return isMovie
-        ? `https://netmirror.org/embed/movie/${mediaId}`
-        : `https://netmirror.org/embed/tv/${mediaId}/${season}/${episode}`;
+        ? `https://netmirror.global/embed/movie/${mediaId}`
+        : `https://netmirror.global/embed/tv/${mediaId}/${season}/${episode}`;
     case "cineverse":
       return isMovie
         ? `https://cineverse.cc/embed/movie/${mediaId}`
@@ -94,10 +104,30 @@ export const resolveServerUrl = (
       return isMovie
         ? `https://vidsrc.pm/embed/movie/${mediaId}`
         : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}`;
+    case "vidsrc_xyz_rpm":
+      return isMovie
+        ? `https://vidsrc.pm/embed/movie/${mediaId}?server=RPMShare`
+        : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}?server=RPMShare`;
+    case "vidsrc_xyz_seek":
+      return isMovie
+        ? `https://vidsrc.pm/embed/movie/${mediaId}?server=SeekStreaming`
+        : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}?server=SeekStreaming`;
+    case "vidsrc_xyz_player4me":
+      return isMovie
+        ? `https://vidsrc.pm/embed/movie/${mediaId}?server=Player4Me`
+        : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}?server=Player4Me`;
+    case "vidsrc_xyz_upn":
+      return isMovie
+        ? `https://vidsrc.pm/embed/movie/${mediaId}?server=UpnShare`
+        : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}?server=UpnShare`;
+    case "vidsrc_xyz_p2p":
+      return isMovie
+        ? `https://vidsrc.pm/embed/movie/${mediaId}?server=StreamP2P`
+        : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}?server=StreamP2P`;
     case "embed_su":
       return isMovie
-        ? `https://superembed.stream/embed/movie/${mediaId}`
-        : `https://superembed.stream/embed/tv/${mediaId}/${season}/${episode}`;
+        ? `https://multiembed.mov/?video_id=${mediaId}&tmdb=1`
+        : `https://multiembed.mov/?video_id=${mediaId}&tmdb=1&s=${season}&e=${episode}`;
     default:
       return "";
   }

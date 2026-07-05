@@ -13,7 +13,10 @@ import {
 } from "./mockData";
 
 const API_BASE_URL = "https://api.themoviedb.org/3";
-const TMDB_API_KEY = process.env.TMDB_API_KEY || "";
+const TMDB_API_KEY =
+  process.env.NEXT_PUBLIC_TMDB_API_KEY ||
+  process.env.TMDB_API_KEY ||
+  "";
 const IMAGE_BASE_URL = process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE_URL || "https://image.tmdb.org/t/p";
 
 // Helpers to format image paths
@@ -320,6 +323,96 @@ export const tmdbService = {
     } catch (error) {
       console.warn("Failed to fetch season details:", error);
       return { episodes: [] };
+    }
+  },
+
+  // Enhanced details fetch with everything in one call using append_to_response
+  getDetailsEnhanced: async (id: string, mediaType: "movie" | "tv"): Promise<any> => {
+    try {
+      const appendFields = [
+        "keywords",
+        "release_dates",
+        "content_ratings",
+        "images",
+        "similar",
+        "external_ids",
+        "credits",
+        "videos",
+        "reviews",
+        "recommendations",
+        "watch/providers",
+      ].join(",");
+
+      const data = await fetchFromTMDB<any>(
+        `/${mediaType}/${id}`,
+        { append_to_response: appendFields, "images.include_image_language": "en,null" },
+        1800
+      );
+
+      // Extract US certification
+      let certification = "";
+      if (mediaType === "movie") {
+        const us = data.release_dates?.results?.find((r: any) => r.iso_3166_1 === "US");
+        certification = us?.release_dates?.[0]?.certification || "";
+      } else {
+        const us = data.content_ratings?.results?.find((r: any) => r.iso_3166_1 === "US");
+        certification = us?.rating || "";
+      }
+
+      // Extract keywords
+      const keywords: string[] = (
+        data.keywords?.keywords ||
+        data.keywords?.results ||
+        []
+      ).slice(0, 20).map((k: any) => k.name);
+
+      // Extract backdrops (max 12, English/null language)
+      const backdrops: string[] = (
+        data.images?.backdrops || []
+      ).slice(0, 12).map((img: any) => img.file_path);
+
+      // Extract posters (max 6)
+      const posters: string[] = (
+        data.images?.posters || []
+      ).slice(0, 6).map((img: any) => img.file_path);
+
+      // Extract US watch providers
+      const usProviders = data["watch/providers"]?.results?.["US"] || {};
+      const streamingProviders = [
+        ...(usProviders.flatrate || []),
+        ...(usProviders.free || []),
+      ];
+
+      return {
+        ...data,
+        certification,
+        keywords,
+        backdrops,
+        posters,
+        streamingProviders,
+        cast: data.credits?.cast?.slice(0, 20) || [],
+        crew: data.credits?.crew?.filter((c: any) =>
+          ["Director", "Executive Producer", "Producer", "Screenplay", "Story"].includes(c.job)
+        ).slice(0, 8) || [],
+        trailers: (
+          data.videos?.results || []
+        ).filter((v: any) =>
+          (v.site === "YouTube" || v.site === "Vimeo") &&
+          (v.type === "Trailer" || v.type === "Teaser")
+        ).slice(0, 6),
+        imdbId: data.external_ids?.imdb_id || "",
+        similarTitles: (
+          data.similar?.results || []
+        ).slice(0, 12).map((item: any) => ({ ...item, media_type: mediaType })),
+        recommendations: (
+          data.recommendations?.results || []
+        ).slice(0, 12).map((item: any) => ({ ...item, media_type: mediaType })),
+        userReviews: (data.reviews?.results || []).slice(0, 5),
+        productionCompanies: (data.production_companies || []).slice(0, 5),
+      };
+    } catch (error) {
+      console.warn(`TMDB getDetailsEnhanced for ${mediaType} ${id} failed:`, error);
+      return null;
     }
   },
 };

@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // In-memory LRU-style cache to store TMDB ID → IMDb enrichment data
-const enrichmentCache = new Map<string, { url: string; imdbId: string; rating?: number; voteCount?: number; imdbUrl?: string }>();
+const enrichmentCache = new Map<string, {
+  url: string;
+  imdbId: string;
+  rating?: number;
+  voteCount?: number;
+  imdbUrl?: string;
+  metacriticScore?: number;
+  metacriticCount?: number;
+  interests?: string[];
+}>();
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || "8088221e5df33c3fa7b69dc0c2219d36";
 
@@ -23,7 +32,13 @@ export async function GET(request: NextRequest) {
   
   if (cached) {
     if (mode === "json") {
-      return NextResponse.json({ imdbId: cached.imdbId, imdbUrl: cached.imdbUrl, rating: cached.rating, voteCount: cached.voteCount, posterUrl: cached.url });
+      return NextResponse.json({
+        imdbId: cached.imdbId, imdbUrl: cached.imdbUrl,
+        rating: cached.rating, voteCount: cached.voteCount,
+        metacriticScore: cached.metacriticScore, metacriticCount: cached.metacriticCount,
+        interests: cached.interests,
+        posterUrl: cached.url,
+      });
     }
     return NextResponse.redirect(cached.url, { status: 307 });
   }
@@ -46,6 +61,9 @@ export async function GET(request: NextRequest) {
     let rating: number | undefined;
     let voteCount: number | undefined;
     let imdbUrl: string | undefined;
+    let metacriticScore: number | undefined;
+    let metacriticCount: number | undefined;
+    let interests: string[] | undefined;
 
     // 2. Fetch from imdbapi.dev using IMDb ID
     if (imdbId) {
@@ -56,6 +74,9 @@ export async function GET(request: NextRequest) {
         rating = imdbData.rating?.aggregateRating;
         voteCount = imdbData.rating?.voteCount;
         imdbUrl = `https://www.imdb.com/title/${imdbId}/`;
+        metacriticScore = imdbData.metacritic?.score;
+        metacriticCount = imdbData.metacritic?.reviewCount;
+        interests = (imdbData.interests || []).slice(0, 6).map((i: any) => i.name || i);
       }
     }
 
@@ -66,6 +87,9 @@ export async function GET(request: NextRequest) {
       rating,
       voteCount,
       imdbUrl,
+      metacriticScore,
+      metacriticCount,
+      interests,
     };
     
     // Limit cache to 500 entries
@@ -76,7 +100,11 @@ export async function GET(request: NextRequest) {
     enrichmentCache.set(cacheKey, entry);
 
     if (mode === "json") {
-      return NextResponse.json({ imdbId, imdbUrl, rating, voteCount, posterUrl: entry.url });
+      return NextResponse.json({
+        imdbId, imdbUrl, rating, voteCount,
+        metacriticScore, metacriticCount, interests,
+        posterUrl: entry.url,
+      });
     }
 
     if (resolvedPoster) {

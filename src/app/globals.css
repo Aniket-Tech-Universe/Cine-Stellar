@@ -153,3 +153,22 @@ body {
   border-color: rgba(225, 29, 72, 0.5);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Slim custom scrollbar for modal content panels */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #3f3f46;
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #e11d48;
+}

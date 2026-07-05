@@ -1,524 +1,819 @@
-// High-end cinematic details overlay modal displaying posters, taglines, ratings, trailers, cast lists, and user review comments.
+// Cinematic full-screen details overlay with tabbed layout, rich metadata from TMDB + IMDb
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Play, Plus, Check, Star, Heart, Share2, Film } from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  Play, Plus, Check, Star, Heart, Share2, X,
+  Film, Globe, Calendar, Clock, Award, Users,
+  ChevronRight, BookOpen, Clapperboard, Image as ImageIcon, Tv,
+  ExternalLink, ThumbsUp, Info,
+} from "lucide-react";
 import { Dialog, DialogContent } from "../ui/dialog";
 import Button from "../ui/button";
 import { useDetailModalStore, useAuthModalStore, useAuthStore } from "@/lib/store";
 import { tmdbService, getImagePath } from "@/lib/services/tmdb";
-import { MediaItem, CastMember, Review, Video } from "@/lib/services/mockData";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "../ui/skeleton";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ImdbData {
+  imdbId?: string;
+  imdbUrl?: string;
+  rating?: number;
+  voteCount?: number;
+  metacriticScore?: number;
+  metacriticCount?: number;
+  interests?: string[];
+  posterUrl?: string;
+}
+
+type TabId = "overview" | "details" | "media" | "more";
+
+const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: "overview",  label: "Overview",       icon: <Info className="w-3.5 h-3.5" /> },
+  { id: "details",   label: "Details",        icon: <BookOpen className="w-3.5 h-3.5" /> },
+  { id: "media",     label: "Media",          icon: <ImageIcon className="w-3.5 h-3.5" /> },
+  { id: "more",      label: "More Like This", icon: <Film className="w-3.5 h-3.5" /> },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function certBg(cert: string) {
+  const map: Record<string, string> = {
+    G: "bg-green-600",    PG: "bg-green-500",   "PG-13": "bg-yellow-600",
+    R: "bg-red-600",      NC17: "bg-red-800",   "TV-MA": "bg-red-700",
+    "TV-14": "bg-orange-600", "TV-PG": "bg-yellow-500", "TV-G": "bg-green-600",
+  };
+  return map[cert] ?? "bg-zinc-600";
+}
+
+function metaColor(score: number) {
+  if (score >= 61) return "bg-green-600 text-white";
+  if (score >= 40) return "bg-yellow-500 text-black";
+  return "bg-red-600 text-white";
+}
+
+function formatVotes(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return `${n}`;
+}
+
+function formatMoney(n: number) {
+  if (!n) return null;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
+  return `$${(n / 1_000_000).toFixed(1)}M`;
+}
+
+function RatingRing({ value, max = 10, color = "#e11d48" }: { value: number; max?: number; color?: string }) {
+  const radius = 22;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (value / max) * circumference;
+  return (
+    <div className="relative flex items-center justify-center w-16 h-16">
+      <svg className="absolute" width="64" height="64" viewBox="0 0 64 64" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="32" cy="32" r={radius} fill="none" stroke="#27272a" strokeWidth="5" />
+        <circle
+          cx="32" cy="32" r={radius} fill="none"
+          stroke={color} strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={`${progress} ${circumference}`}
+          style={{ transition: "stroke-dasharray 1s ease" }}
+        />
+      </svg>
+      <span className="relative text-sm font-black text-white z-10">{value.toFixed(1)}</span>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DetailsModal() {
   const router = useRouter();
   const { isOpen, mediaId, mediaType, closeDetailModal } = useDetailModalStore();
-  const { 
-    user, 
-    watchlist, 
-    favorites, 
-    addToWatchlist, 
-    removeFromWatchlist, 
-    addToFavorites, 
-    removeFromFavorites 
-  } = useAuthStore();
+  const { user, watchlist, favorites, addToWatchlist, removeFromWatchlist, addToFavorites, removeFromFavorites } = useAuthStore();
   const { openAuthModal } = useAuthModalStore();
 
-  const [loading, setLoading] = useState(true);
-  const [details, setDetails] = useState<MediaItem | null>(null);
-  const [cast, setCast] = useState<CastMember[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
-  const [providers, setProviders] = useState<any[]>([]);
-
-  const [loadingWatchlist, setLoadingWatchlist] = useState(false);
-  const [loadingFavorite, setLoadingFavorite] = useState(false);
+  const [loading, setLoading]         = useState(true);
+  const [details, setDetails]         = useState<any | null>(null);
+  const [imdbData, setImdbData]       = useState<ImdbData | null>(null);
+  const [activeTab, setActiveTab]     = useState<TabId>("overview");
   const [playTrailer, setPlayTrailer] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [imdbData, setImdbData] = useState<{ imdbId?: string; imdbUrl?: string; rating?: number; voteCount?: number } | null>(null);
+  const [activeTrailer, setActiveTrailer] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink]   = useState(false);
+  const [loadingWatchlist, setLoadingWatchlist] = useState(false);
+  const [loadingFavorite, setLoadingFavorite]   = useState(false);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   const inWatchlist = mediaId ? watchlist.some((item) => String(item.mediaId) === String(mediaId)) : false;
-  const isFavorite = mediaId ? favorites.some((item) => String(item.mediaId) === String(mediaId)) : false;
+  const isFavorite  = mediaId ? favorites.some((item) => String(item.mediaId) === String(mediaId)) : false;
 
-  // Fetch all required data once modal opens
+  // ── Data Fetch ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen || !mediaId || !mediaType) return;
 
     async function loadData() {
       setLoading(true);
+      setActiveTab("overview");
       setPlayTrailer(false);
+      setActiveTrailer(null);
+      setImdbData(null);
+      setDetails(null);
+
       try {
-        const [detRes, castRes, vidRes, revRes, recRes, provRes] = await Promise.all([
-          tmdbService.getDetails(mediaId!, mediaType!),
-          tmdbService.getCredits(mediaId!, mediaType!),
-          tmdbService.getVideos(mediaId!, mediaType!),
-          tmdbService.getReviews(mediaId!, mediaType!),
-          tmdbService.getRecommendations(mediaId!, mediaType!),
-          tmdbService.getWatchProviders(mediaId!, mediaType!),
-        ]);
+        const enhanced = await tmdbService.getDetailsEnhanced(mediaId!, mediaType!);
+        setDetails(enhanced);
 
-        setDetails(detRes);
-        setCast(castRes);
-        setVideos(vidRes);
-        setReviews(revRes);
-        setRecommendations(recRes);
-        setProviders(provRes);
-
-        // Fetch IMDb enrichment data in the background
-        setImdbData(null);
+        // Background IMDb enrichment
         fetch(`/api/imdb/poster?id=${mediaId}&type=${mediaType}&mode=json`)
-          .then((r) => r.ok ? r.json() : null)
+          .then((r) => (r.ok ? r.json() : null))
           .then((data) => { if (data && !data.error) setImdbData(data); })
           .catch(() => {});
       } catch (err) {
-        console.error("Failed to load details modal data:", err);
+        console.error("DetailsModal load failed:", err);
       } finally {
         setLoading(false);
       }
     }
-
     loadData();
   }, [isOpen, mediaId, mediaType]);
 
-
-
+  // ── Auth-gated actions ──────────────────────────────────────────────────────
   const handleWatchlistToggle = async () => {
-    if (!user) {
-      openAuthModal("login");
-      return;
-    }
-
+    if (!user) { openAuthModal("login"); return; }
     setLoadingWatchlist(true);
     const method = inWatchlist ? "DELETE" : "POST";
-    const url = inWatchlist 
-      ? `/api/watchlist?mediaId=${mediaId}&mediaType=${mediaType}`
-      : "/api/watchlist";
-    const body = inWatchlist
-      ? null
-      : JSON.stringify({
-          mediaId: details?.id,
-          mediaType,
-          title: details?.title || details?.name,
-          posterPath: details?.poster_path,
-          backdropPath: details?.backdrop_path,
-        });
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      if (res.ok) {
-        if (inWatchlist) {
-          removeFromWatchlist(String(mediaId), mediaType || "movie");
-        } else {
-          addToWatchlist({ 
-            mediaId: String(mediaId), 
-            mediaType: mediaType || "movie",
-            title: details?.title || details?.name,
-            posterPath: details?.poster_path,
-            backdropPath: details?.backdrop_path,
-          });
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingWatchlist(false);
-    }
+    const url    = inWatchlist ? `/api/watchlist?mediaId=${mediaId}&mediaType=${mediaType}` : "/api/watchlist";
+    const body   = inWatchlist ? undefined : JSON.stringify({ mediaId, mediaType, title: details?.title || details?.name, posterPath: details?.poster_path });
+    try { await fetch(url, { method, headers: { "Content-Type": "application/json" }, body }); }
+    finally { setLoadingWatchlist(false); }
+    if (inWatchlist) removeFromWatchlist(String(mediaId), mediaType!); else addToWatchlist({ mediaId: String(mediaId), mediaType: mediaType!, title: details?.title || details?.name || "", posterPath: details?.poster_path || "" });
   };
 
   const handleFavoriteToggle = async () => {
-    if (!user) {
-      openAuthModal("login");
-      return;
-    }
-
+    if (!user) { openAuthModal("login"); return; }
     setLoadingFavorite(true);
     const method = isFavorite ? "DELETE" : "POST";
-    const url = isFavorite 
-      ? `/api/favorites?mediaId=${mediaId}&mediaType=${mediaType}`
-      : "/api/favorites";
-    const body = isFavorite
-      ? null
-      : JSON.stringify({
-          mediaId: details?.id,
-          mediaType,
-          title: details?.title || details?.name,
-          posterPath: details?.poster_path,
-          backdropPath: details?.backdrop_path,
-        });
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      if (res.ok) {
-        if (isFavorite) {
-          removeFromFavorites(String(mediaId), mediaType || "movie");
-        } else {
-          addToFavorites({ mediaId: String(mediaId), mediaType: mediaType || "movie" });
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingFavorite(false);
-    }
+    const url    = isFavorite ? `/api/favorites?mediaId=${mediaId}&mediaType=${mediaType}` : "/api/favorites";
+    const body   = isFavorite ? undefined : JSON.stringify({ mediaId, mediaType, title: details?.title || details?.name, posterPath: details?.poster_path });
+    try { await fetch(url, { method, headers: { "Content-Type": "application/json" }, body }); }
+    finally { setLoadingFavorite(false); }
+    if (isFavorite) removeFromFavorites(String(mediaId), mediaType!); else addToFavorites({ mediaId: String(mediaId), mediaType: mediaType!, title: details?.title || details?.name || "", posterPath: details?.poster_path || "" });
   };
 
-  const handleShare = () => {
-    const link = `${window.location.origin}/watch/${mediaType}/${mediaId}`;
-    navigator.clipboard.writeText(link);
+  const handleShare = async () => {
+    const shareUrl = `${window.location.origin}/${mediaType}/${mediaId}`;
+    await navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const handlePlayClick = () => {
+  const handleWatch = useCallback(() => {
     closeDetailModal();
-    router.push(`/watch/${mediaType}/${mediaId}`);
-  };
+    router.push(`/${mediaType}/${mediaId}`);
+  }, [closeDetailModal, router, mediaId, mediaType]);
 
-  const trailer = videos.find((v) => v.type === "Trailer" || v.type === "Teaser") || videos[0];
+  // ── Derived values ──────────────────────────────────────────────────────────
+  const title         = details?.title || details?.name || "";
+  const tagline       = details?.tagline || "";
+  const year          = (details?.release_date || details?.first_air_date || "").slice(0, 4);
+  const posterUrl     = details?.poster_path ? getImagePath(details.poster_path, "w500") : "/placeholder-media.png";
+  const backdropUrl   = details?.backdrop_path ? getImagePath(details.backdrop_path, "w1280") : "";
+  const tmdbScore     = details?.vote_average ?? 0;
+  const runtime       = details?.runtime || null;
+  const seasons       = details?.number_of_seasons || null;
+  const episodes      = details?.number_of_episodes || null;
+  const genres        = (details?.genres || []).map((g: any) => g.name);
+  const overview      = details?.overview || "";
+  const cert          = details?.certification || "";
+  const keywords      = details?.keywords || [];
+  const cast          = details?.cast || [];
+  const crew          = details?.crew || [];
+  const trailers      = details?.trailers || [];
+  const backdrops     = details?.backdrops || [];
+  const similar       = details?.similarTitles || [];
+  const recs          = details?.recommendations || [];
+  const providers     = details?.streamingProviders || [];
+  const companies     = details?.productionCompanies || [];
+  const userReviews   = details?.userReviews || [];
+  const spokenLangs   = (details?.spoken_languages || []).map((l: any) => l.english_name || l.name);
+  const countries     = (details?.production_countries || []).map((c: any) => c.name);
+  const budget        = details?.budget;
+  const revenue       = details?.revenue;
+  const status        = details?.status;
+  const collection    = details?.belongs_to_collection;
+  const imdbUrl       = imdbData?.imdbUrl || (details?.imdbId ? `https://www.imdb.com/title/${details.imdbId}/` : null);
+  const mainTrailer   = trailers[0]?.key || null;
 
+  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <Dialog isOpen={isOpen} onClose={closeDetailModal}>
-      <DialogContent className="max-w-5xl bg-zinc-950 border border-zinc-900 rounded-3xl p-0 overflow-hidden">
-        {loading ? (
-          <div className="flex flex-col space-y-4 p-8">
-            <Skeleton className="w-full h-64 md:h-[450px] rounded-2xl" />
-            <Skeleton className="w-1/3 h-8 rounded" />
-            <Skeleton className="w-1/2 h-6 rounded" />
-            <Skeleton className="w-full h-24 rounded" />
-            <div className="grid grid-cols-5 gap-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-40 rounded-xl" />
-              ))}
-            </div>
-          </div>
-        ) : (
-          details && (
-            <div className="flex flex-col">
-              {/* Top Banner (Trailer or Backdrop Image Overlay) */}
-              <div className="relative w-full h-[40vh] md:h-[550px] bg-zinc-950">
-                {playTrailer && trailer ? (
+    <>
+      {/* Image Lightbox */}
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+          onClick={() => setLightboxImg(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white bg-zinc-800 rounded-full p-2"
+            onClick={() => setLightboxImg(null)}
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img src={getImagePath(lightboxImg, "original")} alt="Backdrop" className="max-h-[90vh] max-w-[95vw] object-contain rounded-lg shadow-2xl" />
+        </div>
+      )}
+
+      <Dialog isOpen={isOpen} onClose={closeDetailModal}>
+        <DialogContent showCloseButton={false} className="max-w-5xl w-full max-h-[95vh] p-0 bg-[#0c0c10] border border-zinc-800/60 rounded-2xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.9)] flex flex-col">
+
+          {/* ── Hero Banner ─────────────────────────────────────────────────── */}
+          {loading ? (
+            <Skeleton className="w-full h-64 rounded-none" />
+          ) : (
+            <div className="relative w-full h-52 md:h-72 flex-shrink-0 overflow-hidden">
+              {/* Backdrop image */}
+              {backdropUrl && (
+                <img src={backdropUrl} alt={title} className="absolute inset-0 w-full h-full object-cover opacity-50" />
+              )}
+              {/* Gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0c0c10] via-[#0c0c10]/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0c0c10]/90 via-transparent to-transparent" />
+
+              {/* Trailer overlay */}
+              {playTrailer && (mainTrailer || activeTrailer) && (
+                <div className="absolute inset-0 z-10">
                   <iframe
-                    src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1&rel=0&modestbranding=1`}
-                    title="Trailer Player"
-                    className="w-full h-full border-none"
-                    allow="autoplay; encrypted-media"
+                    className="w-full h-full"
+                    src={`https://www.youtube.com/embed/${activeTrailer || mainTrailer}?autoplay=1&mute=0`}
+                    allow="autoplay; fullscreen"
                     allowFullScreen
                   />
-                ) : (
-                  <>
-                    <img
-                      src={getImagePath(details.backdrop_path, "original")}
-                      alt="backdrop"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent" />
-                  </>
-                )}
+                  <button
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/90 rounded-full p-1.5 text-white z-20"
+                    onClick={() => { setPlayTrailer(false); setActiveTrailer(null); }}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
 
-                {/* Info Text Overlay */}
-                {!playTrailer && (
-                  <div className="absolute bottom-6 left-6 md:left-12 max-w-2xl text-left">
-                    <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight leading-tight">
-                      {details.title || details.name}
-                    </h2>
-                    {details.tagline && (
-                      <p className="text-zinc-300 italic text-sm md:text-base mt-1.5 md:mt-2">
-                        "{details.tagline}"
-                      </p>
+              {/* Content positioned over hero */}
+              <div className="absolute inset-0 flex items-end p-5 md:p-7 gap-5">
+                {/* Poster */}
+                <div className="hidden md:block flex-shrink-0 w-28 h-40 rounded-xl overflow-hidden shadow-2xl border border-zinc-700/50 relative">
+                  <img src={posterUrl} alt={title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder-media.png"; }} />
+                </div>
+
+                {/* Title block */}
+                <div className="flex-1 min-w-0 space-y-1.5 pb-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {cert && (
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${certBg(cert)} text-white`}>
+                        {cert}
+                      </span>
                     )}
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-rose-500 border border-rose-500/40 px-2 py-0.5 rounded">
+                      {mediaType === "movie" ? "Movie" : "Series"}
+                    </span>
+                  </div>
 
-                    {/* Interaction CTAs */}
-                    <div className="flex items-center space-x-3.5 mt-5">
-                      <Button variant="primary" onClick={handlePlayClick} className="px-7 py-3">
-                        <Play className="h-5 w-5 fill-current mr-2" />
-                        Play Now
-                      </Button>
+                  <h1 className="text-2xl md:text-3xl font-black text-white leading-tight tracking-tight line-clamp-2">{title}</h1>
+                  {tagline && <p className="text-sm text-zinc-400 italic">"{tagline}"</p>}
 
-                      {trailer && (
-                        <Button variant="glass" onClick={() => setPlayTrailer(true)} className="px-6 py-3">
-                          <Film className="h-5 w-5 mr-2" />
-                          Trailer
-                        </Button>
-                      )}
+                  {/* Meta row */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium pt-0.5">
+                    {year && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{year}</span>}
+                    {runtime && <><span className="text-zinc-600">•</span><span className="flex items-center gap-1"><Clock className="w-3 h-3" />{Math.floor(runtime / 60)}h {runtime % 60}m</span></>}
+                    {seasons && <><span className="text-zinc-600">•</span><span className="flex items-center gap-1"><Tv className="w-3 h-3" />{seasons} Season{seasons > 1 ? "s" : ""}</span></>}
+                    {episodes && <><span className="text-zinc-600">•</span><span>{episodes} Episodes</span></>}
+                    {genres.slice(0, 3).map((g: string) => (
+                      <><span className="text-zinc-600">•</span><span key={g}>{g}</span></>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-                      <button
-                        onClick={handleWatchlistToggle}
-                        disabled={loadingWatchlist}
-                        className="flex items-center justify-center p-3 rounded-full bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-white transition-all cursor-pointer"
-                        title="Add to Watchlist"
-                      >
-                        {inWatchlist ? (
-                          <Check className="h-5 w-5 text-rose-500" />
-                        ) : (
-                          <Plus className="h-5 w-5" />
-                        )}
-                      </button>
-
-                      <button
-                        onClick={handleFavoriteToggle}
-                        disabled={loadingFavorite}
-                        className="flex items-center justify-center p-3 rounded-full bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-white transition-all cursor-pointer"
-                        title="Favorite Item"
-                      >
-                        <Heart className={`h-5 w-5 ${isFavorite ? "fill-rose-500 text-rose-500" : ""}`} />
-                      </button>
-
-                      <button
-                        onClick={handleShare}
-                        className="flex items-center justify-center p-3 rounded-full bg-zinc-900/60 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 text-white transition-all relative cursor-pointer"
-                        title="Copy Link to Clipboard"
-                      >
-                        <Share2 className="h-5 w-5" />
-                        {copiedLink && (
-                          <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 text-white text-[10px] px-2 py-1 rounded font-bold">
-                            Copied!
-                          </span>
-                        )}
-                      </button>
+          {/* ── Rating + Action Row ─────────────────────────────────────────── */}
+          {!loading && details && (
+            <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-3 px-5 md:px-7 py-3 border-b border-zinc-800/60 bg-zinc-900/30">
+              {/* Ratings */}
+              <div className="flex items-center gap-4">
+                {tmdbScore > 0 && (
+                  <div className="flex items-center gap-2">
+                    <RatingRing value={tmdbScore} color="#e11d48" />
+                    <div className="text-xs text-zinc-500">
+                      <div className="font-semibold text-zinc-300">TMDB</div>
+                      <div>{formatVotes(details?.vote_count || 0)} votes</div>
                     </div>
+                  </div>
+                )}
+                {imdbData?.rating && (
+                  <a href={imdbData.imdbUrl || "#"} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 hover:border-amber-400/60 rounded-xl px-3 py-2 transition-all group">
+                    <div className="text-center">
+                      <div className="text-amber-400 font-black text-xs tracking-widest uppercase flex items-center gap-1">IMDb <ExternalLink className="w-2.5 h-2.5 opacity-50 group-hover:opacity-100" /></div>
+                      <div className="text-amber-300 font-black text-lg leading-none">{imdbData.rating.toFixed(1)}</div>
+                      {imdbData.voteCount && <div className="text-zinc-500 text-[9px]">{formatVotes(imdbData.voteCount)}</div>}
+                    </div>
+                  </a>
+                )}
+                {imdbData?.metacriticScore != null && (
+                  <div className="flex flex-col items-center">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Metacritic</div>
+                    <span className={`font-black text-sm px-2.5 py-1.5 rounded-lg ${metaColor(imdbData.metacriticScore)}`}>
+                      {imdbData.metacriticScore}
+                    </span>
+                    {imdbData.metacriticCount && <div className="text-[9px] text-zinc-600 mt-0.5">{imdbData.metacriticCount} reviews</div>}
                   </div>
                 )}
               </div>
 
-              {/* Bottom Details Layout */}
-              <div className="p-6 md:p-12 space-y-10 text-left">
-                {/* Meta details grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="md:col-span-2 space-y-4">
-                    <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm font-semibold text-zinc-400">
-                      <span className="text-rose-500 font-bold capitalize">{mediaType}</span>
-                      <span>•</span>
-                      <span>
-                        {details.release_date
-                          ? new Date(details.release_date).getFullYear()
-                          : details.first_air_date
-                          ? new Date(details.first_air_date).getFullYear()
-                          : "Unknown"}
-                      </span>
-                      <span>•</span>
-                      {details.runtime && (
-                        <span>
-                          {Math.floor(details.runtime / 60)}h {details.runtime % 60}m
-                        </span>
-                      )}
-                      {details.number_of_seasons && (
-                        <span>
-                          {details.number_of_seasons} Season{details.number_of_seasons > 1 ? "s" : ""}
-                        </span>
-                      )}
-                      <span>•</span>
-                      <div className="flex items-center text-amber-500 font-bold">
-                        <Star className="h-4.5 w-4.5 fill-current mr-0.5" />
-                        {details.vote_average?.toFixed(1) || "NR"}
-                      </div>
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                {mainTrailer && (
+                  <Button
+                    onClick={() => { setPlayTrailer(true); setActiveTrailer(mainTrailer); }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold rounded-xl transition-all"
+                  >
+                    <Play className="w-4 h-4 fill-current" /> Trailer
+                  </Button>
+                )}
+                <Button
+                  onClick={handleWatch}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-zinc-100 text-black text-sm font-bold rounded-xl transition-all"
+                >
+                  <Play className="w-4 h-4 fill-current" /> Watch
+                </Button>
+                <button
+                  onClick={handleWatchlistToggle}
+                  disabled={loadingWatchlist}
+                  className={`p-2.5 rounded-xl border transition-all ${inWatchlist ? "bg-rose-600/20 border-rose-600/50 text-rose-400" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500"}`}
+                  title={inWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+                >
+                  {inWatchlist ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={handleFavoriteToggle}
+                  disabled={loadingFavorite}
+                  className={`p-2.5 rounded-xl border transition-all ${isFavorite ? "bg-rose-600/20 border-rose-600/50 text-rose-400" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500"}`}
+                  title={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+                >
+                  <Heart className={`w-4 h-4 ${isFavorite ? "fill-current" : ""}`} />
+                </button>
+                <button
+                  onClick={handleShare}
+                  className="p-2.5 rounded-xl border bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-all"
+                  title="Share"
+                >
+                  {copiedLink ? <Check className="w-4 h-4 text-green-400" /> : <Share2 className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          )}
 
-                      {/* IMDb Rating Badge */}
-                      {imdbData?.rating && (
-                        <a
-                          href={imdbData.imdbUrl || "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center space-x-1.5 bg-amber-400/10 border border-amber-400/30 hover:border-amber-400/60 rounded-lg px-2.5 py-1 transition-all"
-                          title="View on IMDb"
-                        >
-                          <span className="text-amber-400 font-black text-[10px] tracking-wider uppercase">IMDb</span>
-                          <span className="text-amber-300 font-bold text-xs">{imdbData.rating.toFixed(1)}</span>
-                          {imdbData.voteCount && (
-                            <span className="text-zinc-500 text-[9px]">
-                              ({(imdbData.voteCount / 1000).toFixed(0)}K)
-                            </span>
-                          )}
-                        </a>
-                      )}
+          {/* ── Tabs ────────────────────────────────────────────────────────── */}
+          {!loading && details && (
+            <div className="flex-shrink-0 flex items-center gap-1 px-5 md:px-7 pt-3 pb-0 border-b border-zinc-800/60">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold uppercase tracking-wider rounded-t-lg transition-all border-b-2 -mb-px ${
+                    activeTab === tab.id
+                      ? "text-white border-rose-600 bg-zinc-800/50"
+                      : "text-zinc-500 border-transparent hover:text-zinc-300"
+                  }`}
+                >
+                  {tab.icon} {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ── Tab Content ─────────────────────────────────────────────────── */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {loading ? (
+              <div className="p-7 space-y-4">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-6 w-full rounded-lg" />)}
+              </div>
+            ) : !details ? (
+              <div className="flex flex-col items-center justify-center h-64 text-zinc-500">
+                <Film className="w-12 h-12 mb-3 opacity-30" />
+                <p className="text-sm">Failed to load details. Please try again.</p>
+              </div>
+            ) : (
+              <div className="p-5 md:p-7">
+
+                {/* ═══ OVERVIEW TAB ══════════════════════════════════════════ */}
+                {activeTab === "overview" && (
+                  <div className="space-y-6">
+
+                    {/* Plot */}
+                    <div>
+                      <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Synopsis</h3>
+                      <p className="text-zinc-300 leading-relaxed text-sm md:text-base">{overview || "No synopsis available."}</p>
                     </div>
 
-                    <p className="text-zinc-300 text-sm md:text-base leading-relaxed">
-                      {details.overview}
-                    </p>
+                    {/* Streaming Providers */}
+                    {providers.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Stream On</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {providers.map((p: any) => (
+                            <div key={p.provider_id} className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700/60 rounded-xl px-3 py-1.5">
+                              {p.logo_path && (
+                                <img src={getImagePath(p.logo_path, "w500")} alt={p.provider_name} className="w-5 h-5 rounded-md object-cover" />
+                              )}
+                              <span className="text-xs font-semibold text-zinc-300">{p.provider_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                    {/* Watch Providers badge line */}
-                    {providers && providers.length > 0 && (
-                      <div className="space-y-2 pt-4 border-t border-zinc-900">
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500">
-                          Where to Stream
-                        </span>
-                        <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-                          {providers.slice(0, 6).map((provider) => (
-                            <div
-                              key={provider.provider_id}
-                              className="relative flex items-center space-x-2 bg-zinc-900/60 border border-zinc-800 px-3 py-1.5 rounded-xl shadow"
-                              title={provider.provider_name}
-                            >
-                              <img
-                                src={getImagePath(provider.logo_path, "w500")}
-                                alt={provider.provider_name}
-                                className="h-5 w-5 rounded-md object-cover"
-                              />
-                              <span className="text-xs text-zinc-300 font-bold">
-                                {provider.provider_name}
-                              </span>
+                    {/* Keywords */}
+                    {(keywords.length > 0 || (imdbData?.interests && imdbData.interests.length > 0)) && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Tags & Keywords</h3>
+                        <div className="flex flex-wrap gap-1.5">
+                          {imdbData?.interests?.map((tag: string) => (
+                            <span key={`imdb-${tag}`} className="text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-full px-2.5 py-1">
+                              {tag}
+                            </span>
+                          ))}
+                          {keywords.map((kw: string) => (
+                            <span key={kw} className="text-[11px] font-medium text-zinc-400 bg-zinc-800/80 border border-zinc-700/50 rounded-full px-2.5 py-1 hover:text-white hover:border-zinc-500 transition-colors cursor-default">
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Top Cast */}
+                    {cast.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">Top Cast</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {cast.slice(0, 8).map((member: any) => (
+                            <div key={member.id} className="flex items-center gap-2.5 bg-zinc-800/40 border border-zinc-700/40 rounded-xl p-2 hover:border-zinc-600 transition-colors">
+                              <div className="w-9 h-9 rounded-full overflow-hidden bg-zinc-700 flex-shrink-0">
+                                {member.profile_path ? (
+                                  <img src={getImagePath(member.profile_path, "w500")} alt={member.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-zinc-500"><Users className="w-4 h-4" /></div>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-white truncate">{member.name}</div>
+                                <div className="text-[10px] text-zinc-500 truncate">{member.character}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {cast.length > 8 && (
+                          <button onClick={() => setActiveTab("details")} className="mt-2 text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1">
+                            View all {cast.length} cast members <ChevronRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Crew */}
+                    {crew.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Key Crew</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {crew.map((c: any) => (
+                            <div key={`${c.id}-${c.job}`} className="bg-zinc-800/40 rounded-xl p-2.5 border border-zinc-700/40">
+                              <div className="text-xs font-bold text-white">{c.name}</div>
+                              <div className="text-[10px] text-rose-400 font-semibold">{c.job}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Collection */}
+                    {collection && (
+                      <div className="relative rounded-2xl overflow-hidden border border-zinc-700/50">
+                        {collection.backdrop_path && (
+                          <img src={getImagePath(collection.backdrop_path, "w780")} alt={collection.name} className="absolute inset-0 w-full h-full object-cover opacity-20" />
+                        )}
+                        <div className="relative flex items-center justify-between gap-3 p-4 bg-gradient-to-r from-zinc-900/80 to-transparent">
+                          <div>
+                            <div className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-1">Part of a Collection</div>
+                            <div className="text-sm font-bold text-white">{collection.name}</div>
+                          </div>
+                          <Film className="w-8 h-8 text-zinc-600 flex-shrink-0" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* User Reviews */}
+                    {userReviews.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">User Reviews</h3>
+                        <div className="space-y-3">
+                          {userReviews.slice(0, 2).map((rev: any) => (
+                            <div key={rev.id} className="bg-zinc-800/40 border border-zinc-700/40 rounded-xl p-4 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-rose-600/20 border border-rose-600/30 flex items-center justify-center text-rose-400 text-xs font-black">
+                                  {rev.author?.charAt(0)?.toUpperCase() || "?"}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-white">{rev.author}</div>
+                                  {rev.author_details?.rating && (
+                                    <div className="flex items-center gap-0.5 text-amber-400 text-[10px]">
+                                      <Star className="w-2.5 h-2.5 fill-current" />
+                                      {rev.author_details.rating}/10
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-zinc-400 text-xs leading-relaxed line-clamp-4">
+                                {rev.content?.replace(/\r?\n/g, " ") || ""}
+                              </p>
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
                   </div>
+                )}
 
-                  {/* Sidebar stats details */}
-                  <div className="p-5 rounded-2xl bg-zinc-900/40 border border-zinc-850 space-y-3.5 text-xs text-zinc-400">
-                    {details.budget ? (
-                      <div>
-                        <span className="font-bold text-white block">Budget</span>
-                        <span>${details.budget.toLocaleString()}</span>
-                      </div>
-                    ) : null}
+                {/* ═══ DETAILS TAB ═══════════════════════════════════════════ */}
+                {activeTab === "details" && (
+                  <div className="space-y-6">
 
-                    {details.revenue ? (
-                      <div>
-                        <span className="font-bold text-white block">Revenue</span>
-                        <span>${details.revenue.toLocaleString()}</span>
-                      </div>
-                    ) : null}
+                    {/* Info grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[
+                        { label: "Status", value: status, icon: <Info className="w-3.5 h-3.5" /> },
+                        { label: "Release Year", value: year, icon: <Calendar className="w-3.5 h-3.5" /> },
+                        { label: "Runtime", value: runtime ? `${Math.floor(runtime / 60)}h ${runtime % 60}m` : null, icon: <Clock className="w-3.5 h-3.5" /> },
+                        { label: "Seasons", value: seasons ? `${seasons} Season${seasons > 1 ? "s" : ""}` : null, icon: <Tv className="w-3.5 h-3.5" /> },
+                        { label: "Episodes", value: episodes ? `${episodes} Episodes` : null, icon: <Clapperboard className="w-3.5 h-3.5" /> },
+                        { label: "Rating", value: cert || null, icon: <Award className="w-3.5 h-3.5" /> },
+                        { label: "Budget", value: budget ? formatMoney(budget) : null, icon: <Globe className="w-3.5 h-3.5" /> },
+                        { label: "Revenue", value: revenue ? formatMoney(revenue) : null, icon: <Globe className="w-3.5 h-3.5" /> },
+                        { label: "TMDB Score", value: tmdbScore > 0 ? `${tmdbScore.toFixed(1)} / 10` : null, icon: <Star className="w-3.5 h-3.5" /> },
+                        { label: "IMDb Score", value: imdbData?.rating ? `${imdbData.rating.toFixed(1)} / 10` : null, icon: <Star className="w-3.5 h-3.5" /> },
+                        { label: "Metacritic", value: imdbData?.metacriticScore != null ? `${imdbData.metacriticScore} / 100` : null, icon: <ThumbsUp className="w-3.5 h-3.5" /> },
+                      ].filter(i => i.value).map(({ label, value, icon }) => (
+                        <div key={label} className="bg-zinc-800/40 border border-zinc-700/40 rounded-xl p-3">
+                          <div className="flex items-center gap-1.5 text-zinc-500 text-[10px] font-extrabold uppercase tracking-wider mb-1">{icon}{label}</div>
+                          <div className="text-white text-sm font-bold">{value}</div>
+                        </div>
+                      ))}
+                    </div>
 
-                    {details.status && (
+                    {/* Genres */}
+                    {genres.length > 0 && (
                       <div>
-                        <span className="font-bold text-white block">Status</span>
-                        <span>{details.status}</span>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Genres</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {genres.map((g: string) => (
+                            <span key={g} className="text-xs font-semibold text-rose-400 bg-rose-600/10 border border-rose-600/20 rounded-full px-3 py-1">{g}</span>
+                          ))}
+                        </div>
                       </div>
                     )}
 
+                    {/* Languages */}
+                    {spokenLangs.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Spoken Languages</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {spokenLangs.map((l: string) => (
+                            <span key={l} className="text-xs font-medium text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-full px-3 py-1">{l}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Countries */}
+                    {countries.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">Production Countries</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {countries.map((c: string) => (
+                            <span key={c} className="text-xs font-medium text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-full px-3 py-1 flex items-center gap-1"><Globe className="w-3 h-3" />{c}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Production Companies */}
+                    {companies.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">Production Companies</h3>
+                        <div className="flex flex-wrap gap-3">
+                          {companies.map((co: any) => (
+                            <div key={co.id} className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2">
+                              {co.logo_path ? (
+                                <img src={getImagePath(co.logo_path, "w500")} alt={co.name} className="h-5 w-auto object-contain filter invert opacity-70" />
+                              ) : (
+                                <Clapperboard className="w-4 h-4 text-zinc-500" />
+                              )}
+                              <span className="text-xs font-semibold text-zinc-300">{co.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Full Cast */}
+                    {cast.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">Full Cast ({cast.length})</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {cast.map((member: any) => (
+                            <div key={member.id} className="flex items-center gap-2.5 bg-zinc-800/40 border border-zinc-700/40 rounded-xl p-2 hover:border-zinc-600 transition-colors">
+                              <div className="w-9 h-9 rounded-full overflow-hidden bg-zinc-700 flex-shrink-0">
+                                {member.profile_path ? (
+                                  <img src={getImagePath(member.profile_path, "w500")} alt={member.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-zinc-500"><Users className="w-4 h-4" /></div>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-white truncate">{member.name}</div>
+                                <div className="text-[10px] text-zinc-500 truncate">{member.character}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* IMDb & TMDB external links */}
                     <div>
-                      <span className="font-bold text-white block">Genres</span>
-                      <span>
-                        {details.genre_ids
-                          ? details.genre_ids
-                              .map((id) => {
-                                const names: { [key: number]: string } = {
-                                  28: "Action",
-                                  12: "Adventure",
-                                  16: "Animation",
-                                  35: "Comedy",
-                                  80: "Crime",
-                                  99: "Documentary",
-                                  18: "Drama",
-                                  10751: "Family",
-                                  14: "Fantasy",
-                                  27: "Horror",
-                                  9648: "Mystery",
-                                  10749: "Romance",
-                                  878: "Sci-Fi",
-                                };
-                                return names[id] || "Genre";
-                              })
-                              .join(", ")
-                          : "Cinematic"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cast Carousel Section */}
-                {cast && cast.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg md:text-xl font-bold text-white tracking-tight">Cast</h3>
-                    <div className="flex space-x-4 overflow-x-auto no-scrollbar py-2">
-                      {cast.map((actor) => (
-                        <div key={actor.id} className="flex-shrink-0 w-24 md:w-28 text-center space-y-2">
-                          <img
-                            src={
-                              actor.profile_path
-                                ? getImagePath(actor.profile_path)
-                                : "https://api.dicebear.com/7.x/initials/svg?seed=" + actor.name
-                            }
-                            alt={actor.name}
-                            className="h-28 w-24 md:h-32 md:w-28 rounded-2xl object-cover bg-zinc-900 border border-zinc-800"
-                          />
-                          <p className="text-[10px] md:text-xs font-bold text-white truncate px-1">
-                            {actor.name}
-                          </p>
-                          <p className="text-[9px] md:text-[10px] text-zinc-400 truncate px-1">
-                            {actor.character}
-                          </p>
-                        </div>
-                      ))}
+                      <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-2">External Links</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {imdbUrl && (
+                          <a href={imdbUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-xs font-bold px-3 py-2 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-400 rounded-xl transition-all">
+                            <ExternalLink className="w-3.5 h-3.5" /> View on IMDb
+                          </a>
+                        )}
+                        <a
+                          href={`https://www.themoviedb.org/${mediaType}/${mediaId}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-xs font-bold px-3 py-2 bg-teal-400/10 hover:bg-teal-400/20 border border-teal-400/30 text-teal-400 rounded-xl transition-all"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> View on TMDB
+                        </a>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Recommendations Section */}
-                {recommendations && recommendations.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg md:text-xl font-bold text-white tracking-tight">
-                      More Like This
-                    </h3>
-                    <div className="flex space-x-4 overflow-x-auto no-scrollbar py-2">
-                      {recommendations.slice(0, 12).map((rec) => (
-                        <div
-                          key={rec.id}
-                          onClick={() => {
-                            useDetailModalStore.getState().openDetailModal(String(rec.id), rec.media_type || mediaType);
-                          }}
-                          className="flex-shrink-0 w-28 sm:w-36 rounded-xl overflow-hidden cursor-pointer border border-zinc-900 aspect-[2/3] bg-zinc-900/50 group relative shadow-md"
-                        >
-                          <img
-                            src={
-                              rec.poster_path && rec.poster_path.startsWith("http")
-                                ? rec.poster_path
-                                : `/api/imdb/poster?id=${rec.id}&type=${rec.media_type || mediaType}&title=${encodeURIComponent(rec.title || rec.name || "")}&fallback=${rec.poster_path ? encodeURIComponent(rec.poster_path) : ""}`
-                            }
-                            alt={rec.title || rec.name}
-                            className="w-full h-full object-cover transition-transform group-hover:scale-103"
-                          />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all p-2 text-center">
-                            <p className="text-[10px] sm:text-xs font-bold text-white leading-tight line-clamp-2">
-                              {rec.title || rec.name}
-                            </p>
-                          </div>
+                {/* ═══ MEDIA TAB ═════════════════════════════════════════════ */}
+                {activeTab === "media" && (
+                  <div className="space-y-6">
+
+                    {/* Trailers */}
+                    {trailers.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">Trailers & Teasers</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {trailers.map((video: any) => (
+                            <div key={video.key} className="relative group rounded-xl overflow-hidden cursor-pointer bg-zinc-800 border border-zinc-700/50 hover:border-rose-600/50 transition-all"
+                              onClick={() => { setActiveTrailer(video.key); setPlayTrailer(true); window.scrollTo({ top: 0 }); }}>
+                              <img
+                                src={`https://img.youtube.com/vi/${video.key}/hqdefault.jpg`}
+                                alt={video.name}
+                                className="w-full h-36 object-cover opacity-60 group-hover:opacity-80 transition-opacity"
+                              />
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                <div className="w-12 h-12 rounded-full bg-rose-600/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                  <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                                </div>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 p-2">
+                                <div className="text-white text-xs font-bold truncate">{video.name}</div>
+                                <div className="text-zinc-400 text-[10px] font-semibold uppercase">{video.type}</div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
+
+                    {/* Backdrop Gallery */}
+                    {backdrops.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">
+                          Backdrop Gallery ({backdrops.length} images)
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {backdrops.map((path: string, idx: number) => (
+                            <div
+                              key={idx}
+                              className="relative rounded-xl overflow-hidden cursor-pointer group border border-zinc-700/40 hover:border-rose-600/40 transition-all"
+                              style={{ aspectRatio: "16/9" }}
+                              onClick={() => setLightboxImg(path)}
+                            >
+                              <img
+                                src={getImagePath(path, "w780")}
+                                alt={`Backdrop ${idx + 1}`}
+                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                              />
+                              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <ImageIcon className="w-6 h-6 text-white" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {trailers.length === 0 && backdrops.length === 0 && (
+                      <div className="flex flex-col items-center justify-center h-40 text-zinc-600">
+                        <ImageIcon className="w-10 h-10 mb-2 opacity-30" />
+                        <p className="text-sm">No media available for this title.</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Reviews Section */}
-                <div className="space-y-4">
-                  <h3 className="text-lg md:text-xl font-bold text-white tracking-tight">Reviews</h3>
-                  {reviews && reviews.length > 0 ? (
-                    <div className="space-y-4">
-                      {reviews.map((rev) => (
-                        <div
-                          key={rev.id}
-                          className="p-5 rounded-2xl bg-zinc-900/30 border border-zinc-850 space-y-2.5 text-sm"
-                        >
-                          <div className="flex items-center justify-between">
-                            <p className="font-bold text-white">{rev.author}</p>
-                            <p className="text-xs text-zinc-500">
-                              {new Date(rev.created_at).toLocaleDateString()}
-                            </p>
+                {/* ═══ MORE LIKE THIS TAB ════════════════════════════════════ */}
+                {activeTab === "more" && (
+                  <div className="space-y-6">
+                    {[
+                      { label: "Recommended For You", items: recs },
+                      { label: "Similar Titles", items: similar },
+                    ].map(({ label, items }) =>
+                      items.length > 0 ? (
+                        <div key={label}>
+                          <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 mb-3">{label}</h3>
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                            {items.map((item: any) => {
+                              const itemTitle = item.title || item.name;
+                              const itemPoster = item.poster_path ? getImagePath(item.poster_path, "w500") : "/placeholder-media.png";
+                              const itemScore = item.vote_average?.toFixed(1);
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="group cursor-pointer"
+                                  onClick={() => { closeDetailModal(); setTimeout(() => { useDetailModalStore.getState().openDetailModal(String(item.id), item.media_type || mediaType!); }, 200); }}
+                                >
+                                  <div className="relative rounded-xl overflow-hidden border border-zinc-700/40 group-hover:border-rose-600/50 transition-all">
+                                    <img
+                                      src={itemPoster}
+                                      alt={itemTitle}
+                                      className="w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      style={{ aspectRatio: "2/3" }}
+                                      onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder-media.png"; }}
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                                      <div>
+                                        {itemScore && (
+                                          <div className="flex items-center gap-0.5 text-amber-400 text-[10px] font-bold">
+                                            <Star className="w-2.5 h-2.5 fill-current" />{itemScore}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <div className="w-6 h-6 rounded-full bg-rose-600/90 flex items-center justify-center">
+                                        <Play className="w-3 h-3 fill-white text-white ml-0.5" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-1.5 px-0.5">
+                                    <div className="text-[11px] font-bold text-white truncate">{itemTitle}</div>
+                                    {itemScore && (
+                                      <div className="flex items-center gap-0.5 text-amber-400 text-[10px]">
+                                        <Star className="w-2.5 h-2.5 fill-current" />{itemScore}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                          <p className="text-zinc-400 line-clamp-3 leading-relaxed">{rev.content}</p>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-zinc-500 text-sm">No reviews yet for this title.</p>
-                  )}
-                </div>
+                      ) : null
+                    )}
+                    {recs.length === 0 && similar.length === 0 && (
+                      <div className="flex flex-col items-center justify-center h-40 text-zinc-600">
+                        <Film className="w-10 h-10 mb-2 opacity-30" />
+                        <p className="text-sm">No recommendations available.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </div>
-            </div>
-          )
-        )}
-      </DialogContent>
-    </Dialog>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

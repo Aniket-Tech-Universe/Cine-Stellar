@@ -14,6 +14,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Tv,
   Info,
   SkipForward,
@@ -22,6 +23,87 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "../ui/button";
+
+export type ServerId =
+  | "vidsrc_to"
+  | "gdmirror"
+  | "cineverse"
+  | "screenscape"
+  | "peachify"
+  | "nxsha"
+  | "nhdapi"
+  | "vidking"
+  | "vidsrc_xyz"
+  | "embed_su"
+  | "cinema";
+
+export const STREAM_SERVERS = [
+  { id: "vidsrc_to", name: "Server 1 (VidSrc TO) - Best", flag: "🌐" },
+  { id: "gdmirror", name: "Server 2 (GDMIRROR) - Recommended", flag: "🇮🇳" },
+  { id: "cineverse", name: "Server 3 (Cineverse)", flag: "🇮🇳" },
+  { id: "screenscape", name: "Server 4 (screenscape.me)", flag: "🇮🇳" },
+  { id: "peachify", name: "Server 5 (Peachify API)", flag: "🇮🇳" },
+  { id: "nxsha", name: "Server 6 (Nxsha)", flag: "🇮🇳" },
+  { id: "nhdapi", name: "Server 7 (nhdapi)", flag: "🇮🇳" },
+  { id: "vidking", name: "Server 8 (VidKing)", flag: "🌐" },
+  { id: "vidsrc_xyz", name: "Server 9 (VidSrc XYZ)", flag: "🌐" },
+  { id: "embed_su", name: "Server 10 (Embed SU)", flag: "🌐" },
+  { id: "cinema", name: "Cinema Stream (Direct Demo)", flag: "🍿" },
+];
+
+export const resolveServerUrl = (
+  serverId: ServerId,
+  mediaId: string,
+  mediaType: "movie" | "tv",
+  season: number,
+  episode: number
+) => {
+  const isMovie = mediaType === "movie";
+  switch (serverId) {
+    case "vidsrc_to":
+      return isMovie
+        ? `https://vidsrc.to/embed/movie/${mediaId}`
+        : `https://vidsrc.to/embed/tv/${mediaId}/${season}/${episode}`;
+    case "gdmirror":
+      return isMovie
+        ? `https://gdmirror.cc/embed/movie/${mediaId}`
+        : `https://gdmirror.cc/embed/tv/${mediaId}/${season}/${episode}`;
+    case "cineverse":
+      return isMovie
+        ? `https://cineverse.xyz/embed/movie/${mediaId}`
+        : `https://cineverse.xyz/embed/tv/${mediaId}/${season}/${episode}`;
+    case "screenscape":
+      return isMovie
+        ? `https://screenscape.me/embed/movie/${mediaId}`
+        : `https://screenscape.me/embed/tv/${mediaId}/${season}/${episode}`;
+    case "peachify":
+      return isMovie
+        ? `https://peachify.pro/embed/movie/${mediaId}`
+        : `https://peachify.pro/embed/tv/${mediaId}/${season}/${episode}`;
+    case "nxsha":
+      return isMovie
+        ? `https://nxsha.pro/embed/movie/${mediaId}`
+        : `https://nxsha.pro/embed/tv/${mediaId}/${season}/${episode}`;
+    case "nhdapi":
+      return isMovie
+        ? `https://nhdapi.com/embed/movie/${mediaId}`
+        : `https://nhdapi.com/embed/tv/${mediaId}/${season}/${episode}`;
+    case "vidking":
+      return isMovie
+        ? `https://vidking.link/v/${mediaId}`
+        : `https://vidking.link/v/${mediaId}/${season}/${episode}`;
+    case "vidsrc_xyz":
+      return isMovie
+        ? `https://vidsrc.xyz/embed/movie/${mediaId}`
+        : `https://vidsrc.xyz/embed/tv/${mediaId}/${season}/${episode}`;
+    case "embed_su":
+      return isMovie
+        ? `https://embed.su/embed/movie/${mediaId}`
+        : `https://embed.su/embed/tv/${mediaId}/${season}/${episode}`;
+    default:
+      return "";
+  }
+};
 
 interface VideoPlayerProps {
   mediaId: string;
@@ -65,13 +147,14 @@ export default function VideoPlayer({
   const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(false);
   const [currentEpisode, setCurrentEpisode] = useState(episode);
 
-  // Server-choice state: "vidsrc_to" | "vidsrc_xyz" | "embed_su" | "vidking" | "cinema"
-  const [activeServer, setActiveServer] = useState<"vidsrc_to" | "vidsrc_xyz" | "embed_su" | "vidking" | "cinema">("vidsrc_to");
+  // Server-choice state: ServerId
+  const [activeServer, setActiveServer] = useState<ServerId>("vidsrc_to");
 
   // Unified Settings Drawer tabbed states
   const [settingsTab, setSettingsTab] = useState<"main" | "server" | "quality" | "speed" | "audio">("main");
   const [videoQuality, setVideoQuality] = useState("Auto (1080p)");
   const [audioTrack, setAudioTrack] = useState("Dolby Digital 5.1");
+  const [isFloatingServerOpen, setIsFloatingServerOpen] = useState(false);
 
   // Demo direct video source (using stable Sintel MP4 stream)
   const videoSrc = "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4";
@@ -280,6 +363,53 @@ export default function VideoPlayer({
       ref={containerRef}
       className="relative w-screen h-screen bg-black overflow-hidden select-none"
     >
+      {/* Permanent floating server selector on top of iframe to bypass iframe click blockages */}
+      {activeServer !== "cinema" && (
+        <div className="absolute top-6 right-6 z-50 flex items-center">
+          <div className="relative">
+            <button
+              onClick={() => setIsFloatingServerOpen(!isFloatingServerOpen)}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-zinc-950/90 hover:bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:text-white transition-all shadow-xl backdrop-blur select-none cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1" />
+              <span>
+                {STREAM_SERVERS.find((s) => s.id === activeServer)?.name.split(" - ")[0] || "Select Server"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+
+            <AnimatePresence>
+              {isFloatingServerOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute right-0 mt-2 w-64 rounded-xl bg-zinc-950/95 border border-zinc-800 p-1.5 flex flex-col text-xs text-zinc-300 shadow-2xl z-50 space-y-0.5"
+                >
+                  {STREAM_SERVERS.map((srv) => (
+                    <button
+                      key={srv.id}
+                      onClick={() => {
+                        setActiveServer(srv.id as any);
+                        setIsFloatingServerOpen(false);
+                        setIsPlaying(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 text-left rounded-lg hover:bg-zinc-900 transition-colors cursor-pointer flex items-center justify-between ${
+                        activeServer === srv.id
+                          ? "text-rose-500 font-bold bg-rose-600/10"
+                          : "text-zinc-300"
+                      }`}
+                    >
+                      <span>{srv.name}</span>
+                      <span className="text-sm">{srv.flag}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      )}
       {/* Top Back Controls (visible on hover/pause) */}
       <AnimatePresence>
         {showControls && (
@@ -316,23 +446,7 @@ export default function VideoPlayer({
         // Iframe Stream
         <div className="w-full h-full">
           <iframe
-            src={
-              activeServer === "vidsrc_to"
-                ? mediaType === "movie"
-                  ? `https://vidsrc.to/embed/movie/${mediaId}`
-                  : `https://vidsrc.to/embed/tv/${mediaId}/${season}/${currentEpisode}`
-                : activeServer === "vidsrc_xyz"
-                ? mediaType === "movie"
-                  ? `https://vidsrc.xyz/embed/movie/${mediaId}`
-                  : `https://vidsrc.xyz/embed/tv/${mediaId}/${season}/${currentEpisode}`
-                : activeServer === "embed_su"
-                ? mediaType === "movie"
-                  ? `https://embed.su/embed/movie/${mediaId}`
-                  : `https://embed.su/embed/tv/${mediaId}/${season}/${currentEpisode}`
-                : mediaType === "movie"
-                ? `https://vidking.link/v/${mediaId}`
-                : `https://vidking.link/v/${mediaId}/${season}/${currentEpisode}`
-            }
+            src={resolveServerUrl(activeServer, mediaId, mediaType, season, currentEpisode)}
             title="Premium Streaming Player"
             className="w-full h-full border-none"
             allowFullScreen

@@ -32,7 +32,9 @@ export type ServerId =
   | "peachify"
   | "nxsha"
   | "nhdapi"
-  | "vidking";
+  | "vidking"
+  | "vidsrc_xyz"
+  | "embed_su";
 
 export const STREAM_SERVERS = [
   { id: "vidsrc_to", name: "Server 1 (VidSrc TO) - Best", flag: "🌐" },
@@ -43,6 +45,8 @@ export const STREAM_SERVERS = [
   { id: "nxsha", name: "Server 6 (Nxsha)", flag: "🇮🇳" },
   { id: "nhdapi", name: "Server 7 (nhdapi)", flag: "🇮🇳" },
   { id: "vidking", name: "Server 8 (VidKing)", flag: "🌐" },
+  { id: "vidsrc_xyz", name: "Server 9 (VidSrc XYZ / PM)", flag: "🌐" },
+  { id: "embed_su", name: "Server 10 (Embed SU / SuperEmbed)", flag: "🌐" },
 ];
 
 export const resolveServerUrl = (
@@ -60,32 +64,40 @@ export const resolveServerUrl = (
         : `https://vidsrc.to/embed/tv/${mediaId}/${season}/${episode}`;
     case "gdmirror":
       return isMovie
-        ? `https://gdmirror.cc/embed/movie/${mediaId}`
-        : `https://gdmirror.cc/embed/tv/${mediaId}/${season}/${episode}`;
+        ? `https://netmirror.org/embed/movie/${mediaId}`
+        : `https://netmirror.org/embed/tv/${mediaId}/${season}/${episode}`;
     case "cineverse":
       return isMovie
-        ? `https://cineverse.xyz/embed/movie/${mediaId}`
-        : `https://cineverse.xyz/embed/tv/${mediaId}/${season}/${episode}`;
+        ? `https://cineverse.cc/embed/movie/${mediaId}`
+        : `https://cineverse.cc/embed/tv/${mediaId}/${season}/${episode}`;
     case "screenscape":
       return isMovie
-        ? `https://screenscape.me/embed/movie/${mediaId}`
-        : `https://screenscape.me/embed/tv/${mediaId}/${season}/${episode}`;
+        ? `https://screenscapetv.cfd/embed/movie/${mediaId}`
+        : `https://screenscapetv.cfd/embed/tv/${mediaId}/${season}/${episode}`;
     case "peachify":
       return isMovie
         ? `https://peachify.pro/embed/movie/${mediaId}`
         : `https://peachify.pro/embed/tv/${mediaId}/${season}/${episode}`;
     case "nxsha":
       return isMovie
-        ? `https://nxsha.pro/embed/movie/${mediaId}`
-        : `https://nxsha.pro/embed/tv/${mediaId}/${season}/${episode}`;
+        ? `https://nxshatv.cfd/embed/movie/${mediaId}`
+        : `https://nxshatv.cfd/embed/tv/${mediaId}/${season}/${episode}`;
     case "nhdapi":
       return isMovie
         ? `https://nhdapi.com/embed/movie/${mediaId}`
         : `https://nhdapi.com/embed/tv/${mediaId}/${season}/${episode}`;
     case "vidking":
       return isMovie
-        ? `https://vidking.link/v/${mediaId}`
-        : `https://vidking.link/v/${mediaId}/${season}/${episode}`;
+        ? `https://www.vidking.net/embed/movie/${mediaId}`
+        : `https://www.vidking.net/embed/tv/${mediaId}/${season}/${episode}`;
+    case "vidsrc_xyz":
+      return isMovie
+        ? `https://vidsrc.pm/embed/movie/${mediaId}`
+        : `https://vidsrc.pm/embed/tv/${mediaId}/${season}/${episode}`;
+    case "embed_su":
+      return isMovie
+        ? `https://superembed.stream/embed/movie/${mediaId}`
+        : `https://superembed.stream/embed/tv/${mediaId}/${season}/${episode}`;
     default:
       return "";
   }

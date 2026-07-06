@@ -423,51 +423,60 @@ export default function VideoPlayer({
       ref={containerRef}
       className="relative w-screen h-screen bg-black overflow-hidden select-none"
     >
-      {/* Permanent floating server selector on top of iframe to bypass iframe click blockages */}
-      <div className="absolute top-6 right-6 z-50 flex items-center">
-          <div className="relative">
-            <button
-              onClick={() => setIsFloatingServerOpen(!isFloatingServerOpen)}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-zinc-950/90 hover:bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:text-white transition-all shadow-xl backdrop-blur select-none cursor-pointer"
-            >
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1" />
-              <span>
-                {STREAM_SERVERS.find((s) => s.id === activeServer)?.name.split(" - ")[0] || "Select Server"}
-              </span>
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
+      {/* Floating server selector on top of iframe (visible on hover/pause) */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-6 right-6 z-50 flex items-center"
+          >
+            <div className="relative">
+              <button
+                onClick={() => setIsFloatingServerOpen(!isFloatingServerOpen)}
+                className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-zinc-950/90 hover:bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:text-white transition-all shadow-xl backdrop-blur select-none cursor-pointer"
+              >
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1" />
+                <span>
+                  {STREAM_SERVERS.find((s) => s.id === activeServer)?.name.split(" - ")[0] || "Select Server"}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
 
-            <AnimatePresence>
-              {isFloatingServerOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute right-0 mt-2 w-64 max-h-56 overflow-y-auto custom-scrollbar rounded-xl bg-zinc-950/95 border border-zinc-800 p-1.5 flex flex-col text-xs text-zinc-300 shadow-2xl z-50 space-y-0.5"
-                >
-                  {STREAM_SERVERS.map((srv) => (
-                    <button
-                      key={srv.id}
-                      onClick={() => {
-                        setActiveServer(srv.id as any);
-                        setIsFloatingServerOpen(false);
-                        setIsPlaying(false);
-                      }}
-                      className={`w-full px-2.5 py-1.5 text-left rounded-lg hover:bg-zinc-900 transition-colors cursor-pointer flex items-center justify-between ${
-                        activeServer === srv.id
-                          ? "text-rose-500 font-bold bg-rose-600/10"
-                          : "text-zinc-300"
-                      }`}
-                    >
-                      <span>{srv.name}</span>
-                      <span className="text-sm">{srv.flag}</span>
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+              <AnimatePresence>
+                {isFloatingServerOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-2 w-64 max-h-56 overflow-y-auto custom-scrollbar rounded-xl bg-zinc-950/95 border border-zinc-800 p-1.5 flex flex-col text-xs text-zinc-300 shadow-2xl z-50 space-y-0.5"
+                  >
+                    {STREAM_SERVERS.map((srv) => (
+                      <button
+                        key={srv.id}
+                        onClick={() => {
+                          setActiveServer(srv.id as any);
+                          setIsFloatingServerOpen(false);
+                          setIsPlaying(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 text-left rounded-lg hover:bg-zinc-900 transition-colors cursor-pointer flex items-center justify-between ${
+                          activeServer === srv.id
+                            ? "text-rose-500 font-bold bg-rose-600/10"
+                            : "text-zinc-300"
+                        }`}
+                      >
+                        <span>{srv.name}</span>
+                        <span className="text-sm">{srv.flag}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Top Back Controls (visible on hover/pause) */}
       <AnimatePresence>
         {showControls && (

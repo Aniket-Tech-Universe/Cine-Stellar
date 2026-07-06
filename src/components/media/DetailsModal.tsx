@@ -206,7 +206,7 @@ export default function DetailsModal() {
   };
 
   const handleShare = async () => {
-    const shareUrl = `${window.location.origin}/${mediaType}/${mediaId}`;
+    const shareUrl = `${window.location.origin}/watch/${mediaType}/${mediaId}`;
     await navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -214,7 +214,7 @@ export default function DetailsModal() {
 
   const handleWatch = useCallback(() => {
     closeDetailModal();
-    router.push(`/${mediaType}/${mediaId}`);
+    router.push(`/watch/${mediaType}/${mediaId}`);
   }, [closeDetailModal, router, mediaId, mediaType]);
 
   // ── Derived values ──────────────────────────────────────────────────────────

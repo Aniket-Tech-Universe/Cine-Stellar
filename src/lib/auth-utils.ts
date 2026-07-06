@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import { db } from "./firebase-admin";
 
-const JWT_SECRET = process.env.JWT_SECRET || "cine_stellar_jwt_secret_key_ultra_premium_2026";
+const JWT_SECRET = process.env.JWT_SECRET || "dev_only_jwt_secret_do_not_use_in_production_12345";
 const COOKIE_NAME = "cinestellar_session";
 
 export interface JWTPayload {
